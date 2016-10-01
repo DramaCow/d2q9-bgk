@@ -203,7 +203,6 @@ int accelerate_flow(const t_param params, t_speed* cells, int* obstacles)
   /* modify the 2nd row of the grid */
   int ii = params.ny - 2;
 
-	#pragma omp parallel for
   for (int jj = 0; jj < params.nx; jj++)
   {
     /* if the cell is not occupied and
@@ -230,7 +229,6 @@ int accelerate_flow(const t_param params, t_speed* cells, int* obstacles)
 int propagate(const t_param params, t_speed* cells, t_speed* tmp_cells)
 {
   /* loop over _all_ cells */
-	#pragma omp parallel for
   for (int ii = 0; ii < params.ny; ii++)
   {
     for (int jj = 0; jj < params.nx; jj++)
@@ -302,8 +300,8 @@ int collision(const t_param params, t_speed* cells, t_speed* tmp_cells, int* obs
     for (int jj = 0; jj < params.nx; jj++)
     {
       /* don't consider occupied cells */
-      if (!obstacles[ii * params.nx + jj])
-      {
+      //if (!obstacles[ii * params.nx + jj])
+      //{
         /* compute local density total */
         double local_density = 0.0;
 
@@ -312,7 +310,7 @@ int collision(const t_param params, t_speed* cells, t_speed* tmp_cells, int* obs
           local_density += tmp_cells[ii * params.nx + jj].speeds[kk];
         }
 
-        /* compute x velocity component */
+        // compute x velocity component
         double u_x = (tmp_cells[ii * params.nx + jj].speeds[1]
                       + tmp_cells[ii * params.nx + jj].speeds[5]
                       + tmp_cells[ii * params.nx + jj].speeds[8]
@@ -320,7 +318,7 @@ int collision(const t_param params, t_speed* cells, t_speed* tmp_cells, int* obs
                          + tmp_cells[ii * params.nx + jj].speeds[6]
                          + tmp_cells[ii * params.nx + jj].speeds[7]))
                      / local_density;
-        /* compute y velocity component */
+        // compute y velocity component
         double u_y = (tmp_cells[ii * params.nx + jj].speeds[2]
                       + tmp_cells[ii * params.nx + jj].speeds[5]
                       + tmp_cells[ii * params.nx + jj].speeds[6]
@@ -382,7 +380,7 @@ int collision(const t_param params, t_speed* cells, t_speed* tmp_cells, int* obs
                                                   + params.omega
                                                   * (d_equ[kk] - tmp_cells[ii * params.nx + jj].speeds[kk]);
         }
-      }
+      //}
     }
   }
 
