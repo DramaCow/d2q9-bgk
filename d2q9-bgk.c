@@ -300,8 +300,8 @@ int collision(const t_param params, t_speed* cells, t_speed* tmp_cells, int* obs
     for (int jj = 0; jj < params.nx; jj++)
     {
       /* don't consider occupied cells */
-      //if (!obstacles[ii * params.nx + jj])
-      //{
+      if (!obstacles[ii * params.nx + jj])
+      {
         /* compute local density total */
         double local_density = 0.0;
 
@@ -380,7 +380,7 @@ int collision(const t_param params, t_speed* cells, t_speed* tmp_cells, int* obs
                                                   + params.omega
                                                   * (d_equ[kk] - tmp_cells[ii * params.nx + jj].speeds[kk]);
         }
-      //}
+      }
     }
   }
 
