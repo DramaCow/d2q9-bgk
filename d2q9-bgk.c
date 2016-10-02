@@ -154,7 +154,7 @@ int main(int argc, char* argv[])
   gettimeofday(&timstr, NULL);
   tic = timstr.tv_sec + (timstr.tv_usec / 1000000.0);
 
-  for (int tt = 0; tt < params.maxIters; tt++)
+  for (int tt = 0; tt < 1000 /*params.maxIters*/; tt++)
   {
     timestep(params, cells, tmp_cells, obstacles);
     av_vels[tt] = av_velocity(params, cells, obstacles);
@@ -327,26 +327,29 @@ int collision(const t_param params, t_speed* cells, t_speed* tmp_cells, int* obs
                          + tmp_cells[ii * params.nx + jj].speeds[8]))
                      / local_density;
 
-        /* velocity squared */
+				//double u_x = 5;
+				//double u_y = 6;
+
+        // velocity squared
         double u_sq = u_x * u_x + u_y * u_y;
 
-        /* directional velocity components */
+        // directional velocity components
         double u[NSPEEDS];
-        u[1] =   u_x;        /* east */
-        u[2] =         u_y;  /* north */
-        u[3] = - u_x;        /* west */
-        u[4] =       - u_y;  /* south */
-        u[5] =   u_x + u_y;  /* north-east */
-        u[6] = - u_x + u_y;  /* north-west */
-        u[7] = - u_x - u_y;  /* south-west */
-        u[8] =   u_x - u_y;  /* south-east */
+        u[1] =   u_x;        // east
+        u[2] =         u_y;  // north
+        u[3] = - u_x;        // west
+        u[4] =       - u_y;  // south
+        u[5] =   u_x + u_y;  // north-east
+        u[6] = - u_x + u_y;  // north-west
+        u[7] = - u_x - u_y;  // south-west
+        u[8] =   u_x - u_y;  // south-east
 
-        /* equilibrium densities */
+        // equilibrium densities
         double d_equ[NSPEEDS];
-        /* zero velocity density: weight w0 */
+        // zero velocity density: weight w0
         d_equ[0] = w0 * local_density
                    * (1.0 - u_sq / (2.0 * c_sq));
-        /* axis speeds: weight w1 */
+        // axis speeds: weight w1
         d_equ[1] = w1 * local_density * (1.0 + u[1] / c_sq
                                          + (u[1] * u[1]) / (2.0 * c_sq * c_sq)
                                          - u_sq / (2.0 * c_sq));
@@ -359,7 +362,7 @@ int collision(const t_param params, t_speed* cells, t_speed* tmp_cells, int* obs
         d_equ[4] = w1 * local_density * (1.0 + u[4] / c_sq
                                          + (u[4] * u[4]) / (2.0 * c_sq * c_sq)
                                          - u_sq / (2.0 * c_sq));
-        /* diagonal speeds: weight w2 */
+        // diagonal speeds: weight w2
         d_equ[5] = w2 * local_density * (1.0 + u[5] / c_sq
                                          + (u[5] * u[5]) / (2.0 * c_sq * c_sq)
                                          - u_sq / (2.0 * c_sq));
@@ -373,7 +376,7 @@ int collision(const t_param params, t_speed* cells, t_speed* tmp_cells, int* obs
                                          + (u[8] * u[8]) / (2.0 * c_sq * c_sq)
                                          - u_sq / (2.0 * c_sq));
 
-        /* relaxation step */
+        // relaxation step
         for (int kk = 0; kk < NSPEEDS; kk++)
         {
           cells[ii * params.nx + jj].speeds[kk] = tmp_cells[ii * params.nx + jj].speeds[kk]

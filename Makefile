@@ -3,8 +3,9 @@
 EXE1=d2q9-bgk.exe
 EXES=$(EXE1)
 
-CC=gcc#tau_cc.sh
-CFLAGS= -std=c99 -lm -Wall -O3 -DDEBUG -pg
+CC=tau_cc.sh
+#CC=gcc
+CFLAGS= -std=c99 -lm -Wall -O3 -DDEBUG -pg -g
 
 FINAL_STATE_FILE=./final_state.dat
 AV_VELS_FILE=./av_vels.dat
@@ -30,4 +31,6 @@ check256:
 clean:
 	rm -f $(EXES)
 	rm -f *.pomp.*
+	rm -f cachegrind.out.*
+	rm -f gmon.out
 

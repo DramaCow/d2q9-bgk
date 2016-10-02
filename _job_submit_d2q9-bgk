@@ -5,13 +5,15 @@
 #PBS -o OUT
 #PBS -q teaching
 #PBS -l epilogue=~ggdagw/epilogue.sh
-#PBS -l nodes=1:ppn=16,walltime=00:15:00
+#PBS -l nodes=1:ppn=16,walltime=00:45:00
 
 #! Mail to user if job aborts
 #PBS -m a
 
 #! application name
-application="./d2q9-bgk.exe"
+application="ddt -offline report.html ./d2q9-bgk.exe"
+#application="./cachegrind.sh"
+#application="./d2q9-bgk.exe"
 
 #! Run options for the application
 options="input_256x256.params obstacles_256x256.dat"
