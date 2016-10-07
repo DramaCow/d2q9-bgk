@@ -5,7 +5,8 @@ EXES=$(EXE1)
 
 CC=tau_cc.sh
 #CC=gcc
-CFLAGS= -std=c99 -lm -Wall -O3 -DDEBUG -pg -g
+CFLAGS= -std=c99 -lm -Wall -O3 -DDEBUG -pg -g -ftree-loop-distribution
+#CFLAGS= -std=c99 -lm -Wall -O0 -DDEBUG -pg -g
 
 FINAL_STATE_FILE=./final_state.dat
 AV_VELS_FILE=./av_vels.dat
