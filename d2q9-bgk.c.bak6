@@ -57,7 +57,7 @@
 #include<sys/resource.h>
 
 #define NSPEEDS         9
-#define HALF (NSPEEDS-1)/2
+//#define HALF (NSPEEDS-1)/2
 #define FINALSTATEFILE  "final_state.dat"
 #define AVVELSFILE      "av_vels.dat"
 
@@ -76,7 +76,7 @@ typedef struct
 /* struct to hold the 'speed' values */
 typedef struct
 {
-  double speeds[NSPEEDS];
+  float speeds[NSPEEDS];
 } t_speed;
 
 /*
@@ -158,9 +158,9 @@ int main(int argc, char* argv[])
   for (int tt = 0; tt < params.maxIters; tt++)
   {
     timestep(params, cells, tmp_cells, obstacles);
-      t_speed *tmp = cells; // ]
-      cells = tmp_cells;    // ]-- swap cells with tmp_cells
-      tmp_cells = tmp;      // ]
+      t_speed *tmp = tmp_cells;
+      tmp_cells = cells;
+      cells = tmp;
     av_vels[tt] = av_velocity(params, cells, obstacles);
 #ifdef DEBUG
     printf("==timestep: %d==\n", tt);
@@ -241,8 +241,7 @@ int propagate_collision(const t_param params, t_speed* cellsIn, t_speed* cellsOu
   const double w1 = (1.0 / 9.0 )*params.omega; // weighting factor
   const double w2 = (1.0 / 36.0)*params.omega; // weighting factor
 
-  // temporary speeds array 
-  // each thread will receive a private version  
+  // temporary speeds array - each thread will receive a private version
   t_speed tmp;
 
   // loop over the cells in the grid
@@ -253,11 +252,9 @@ int propagate_collision(const t_param params, t_speed* cellsIn, t_speed* cellsOu
   {
     for (int jj = 0; jj < params.nx; jj++)
     {
-      // =================
-      // === PROPAGATE === aka. streaming
-      // =================
-      // determine indices of axis-direction neighbours
-      // respecting periodic boundary conditions (wrap around)
+      // ================= aka. streaming
+      // === PROPAGATE === determine indices of axis-direction neighbours
+      // ================= respecting periodic boundary conditions (wrap around)
       int y_n = (ii + 1) % params.ny;
       int x_e = (jj + 1) % params.nx;
       int y_s = (ii == 0) ? (params.ny - 1) : (ii - 1);
@@ -275,9 +272,9 @@ int propagate_collision(const t_param params, t_speed* cellsIn, t_speed* cellsOu
       tmp.speeds[7] = cellsIn[y_n * params.nx + x_e].speeds[7]; // south-west
       tmp.speeds[8] = cellsIn[y_n * params.nx + x_w].speeds[8]; // south-east 
 
-      // =================
-      // === COLLISION === don't consider occupied cells
-      // =================
+		  // =================
+			// === COLLISION === don't consider occupied cells
+			// =================
       if (!obstacles[ii * params.nx + jj])
       { 
         // compute local density total
@@ -288,52 +285,43 @@ int propagate_collision(const t_param params, t_speed* cellsIn, t_speed* cellsOu
         }
 
         // compute x velocity component
-        double u_x = ( 
-											   tmp.speeds[1]
-                       + tmp.speeds[5]
-                       + tmp.speeds[8]
-                       - tmp.speeds[3]
-                       - tmp.speeds[6]
-                       - tmp.speeds[7] 
+        double u_x = (   tmp.speeds[1] + tmp.speeds[5] + tmp.speeds[8]
+                       - tmp.speeds[3] - tmp.speeds[6] - tmp.speeds[7] 
 										 ) / local_density;
                      
         // compute y velocity component
-        double u_y = ( 
-											   tmp.speeds[2]
-                       + tmp.speeds[5]
-                       + tmp.speeds[6]
-											 - tmp.speeds[4]
-                       - tmp.speeds[7]
-                       - tmp.speeds[8] 
+        double u_y = (   tmp.speeds[2] + tmp.speeds[5] + tmp.speeds[6]
+											 - tmp.speeds[4] - tmp.speeds[7] - tmp.speeds[8] 
                      ) / local_density;
 
         // velocity squared
         double u_sq = 1.5*(u_x * u_x + u_y * u_y);
 
         // directional velocity components
-        double u1 =   u_x;        // east
-        double u2 =         u_y;  // north
-        double u3 = - u_x;        // west
-        double u4 =       - u_y;  // south
-        double u5 =   u_x + u_y;  // north-east
-        double u6 = - u_x + u_y;  // north-west
-        double u7 = - u_x - u_y;  // south-west
-        double u8 =   u_x - u_y;  // south-east
+        double u[NSPEEDS];
+        u[1] =   u_x;        // east
+        u[2] =         u_y;  // north
+        u[3] = - u_x;        // west
+        u[4] =       - u_y;  // south
+        u[5] =   u_x + u_y;  // north-east
+        u[6] = - u_x + u_y;  // north-west
+        u[7] = - u_x - u_y;  // south-west
+        u[8] =   u_x - u_y;  // south-east
 
         // omega * equilibrium densities
         double omega_d_equ[NSPEEDS];
 				// zero velocity density: weight w0
         omega_d_equ[0] = w0 * local_density * (1.0 - u_sq);
         // axis speeds: weight w1
-        omega_d_equ[1] = w1 * local_density * (1.0 + u1*(3.0 + 4.5*u1) - u_sq);
-        omega_d_equ[2] = w1 * local_density * (1.0 + u2*(3.0 + 4.5*u2) - u_sq);
-        omega_d_equ[3] = w1 * local_density * (1.0 + u3*(3.0 + 4.5*u3) - u_sq);
-        omega_d_equ[4] = w1 * local_density * (1.0 + u4*(3.0 + 4.5*u4) - u_sq);
+        omega_d_equ[1] = w1 * local_density * (1.0 + u[1]*(3.0 + 4.5*u[1]) - u_sq);
+        omega_d_equ[2] = w1 * local_density * (1.0 + u[2]*(3.0 + 4.5*u[2]) - u_sq);
+        omega_d_equ[3] = w1 * local_density * (1.0 + u[3]*(3.0 + 4.5*u[3]) - u_sq);
+        omega_d_equ[4] = w1 * local_density * (1.0 + u[4]*(3.0 + 4.5*u[4]) - u_sq);
         // diagonal speeds: weight w2
-        omega_d_equ[5] = w2 * local_density * (1.0 + u5*(3.0 + 4.5*u5) - u_sq);
-        omega_d_equ[6] = w2 * local_density * (1.0 + u6*(3.0 + 4.5*u6) - u_sq);
-        omega_d_equ[7] = w2 * local_density * (1.0 + u7*(3.0 + 4.5*u7) - u_sq);
-        omega_d_equ[8] = w2 * local_density * (1.0 + u8*(3.0 + 4.5*u8) - u_sq);
+        omega_d_equ[5] = w2 * local_density * (1.0 + u[5]*(3.0 + 4.5*u[5]) - u_sq);
+        omega_d_equ[6] = w2 * local_density * (1.0 + u[6]*(3.0 + 4.5*u[6]) - u_sq);
+        omega_d_equ[7] = w2 * local_density * (1.0 + u[7]*(3.0 + 4.5*u[7]) - u_sq);
+        omega_d_equ[8] = w2 * local_density * (1.0 + u[8]*(3.0 + 4.5*u[8]) - u_sq);
 
 				// relaxation step
         for (int kk = 0; kk < NSPEEDS; kk++)
@@ -342,10 +330,10 @@ int propagate_collision(const t_param params, t_speed* cellsIn, t_speed* cellsOu
 				}
       }
 
-      // ===============
-      // === REBOUND === if the cell contains an obstacle
-      // ===============
-			else
+			// ===============
+			// === REBOUND === if the cell contains an obstacle
+			// ===============
+      else
       {
         // called after propagate (streaming), so taking values from scratch space
         // mirroring, and writing into main grid
