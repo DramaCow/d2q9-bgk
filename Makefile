@@ -5,6 +5,7 @@ EXES=$(EXE1)
 
 #CC=tau_cc.sh
 CC=gcc
+#CFLAGS= -std=c99 -Wall -Ofast -DDEBUG -pg -g -fassociative-math -freciprocal-math -fno-signed-zeros -fno-trapping-math -frename-registers -funroll-loops -fprofile-use
 CFLAGS= -std=c99 -Wall -O3 -DDEBUG -pg -g
 #CFLAGS= -std=c99 -Wall -O0 -DDEBUG -pg -g
 LIBS = -lm

@@ -11,9 +11,9 @@
 #PBS -m a
 
 #! application name
-application="ddt -offline report.html ./d2q9-bgk.exe"
+#application="ddt -offline report.html ./d2q9-bgk.exe"
 #application="./cachegrind.sh"
-#application="./d2q9-bgk.exe"
+application="./d2q9-bgk.exe"
 
 #! Run options for the application
 options="input_256x256.params obstacles_256x256.dat"

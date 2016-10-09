@@ -93,10 +93,11 @@ int initialise(const char* paramfile, const char* obstaclefile,
 ** timestep calls, in order, the functions:
 ** accelerate_flow(), propagate(), rebound() & collision()
 */
-double timestep(const t_param params, t_speed* cellsIn, t_speed* cellsOut, int* obstacles);
-int accelerate_flow(const t_param params, t_speed* cells, int* obstacles);
-double propagate_collision(const t_param params, t_speed* cellsIn, t_speed* cellsOut, int* obstacles);
-int write_values(const t_param params, t_speed* cells, int* obstacles, double* av_vels);
+double timestep(const t_param params, t_speed *restrict cellsIn, t_speed *restrict cellsOut, int *restrict obstacles);
+int accelerate_flow(const t_param params, t_speed *restrict cells, int *restrict obstacles);
+double propagate_collision(const t_param params, t_speed *restrict cellsIn, t_speed *restrict cellsOut, int *restrict obstacles);
+
+int write_values(const t_param params, t_speed *cells, int *obstacles, double *av_vels);
 
 inline void swap(double *a, double *b);
 
@@ -189,14 +190,14 @@ int main(int argc, char* argv[])
   return EXIT_SUCCESS;
 }
 
-double timestep(const t_param params, t_speed* cellsIn, t_speed* cellsOut, int* obstacles)
+double timestep(const t_param params, t_speed *restrict cellsIn, t_speed *restrict cellsOut, int *restrict obstacles)
 {
   accelerate_flow(params, cellsIn, obstacles);
   return propagate_collision(params, cellsIn, cellsOut, obstacles);
   //return EXIT_SUCCESS;
 }
 
-int accelerate_flow(const t_param params, t_speed* cells, int* obstacles)
+int accelerate_flow(const t_param params, t_speed *restrict cells, int *restrict obstacles)
 {
   /* compute weighting factors */
   double w1 = params.density * params.accel / 9.0;
@@ -234,7 +235,7 @@ inline void swap(double *a, double *b) {
 	*b = tmp;
 }
 
-double propagate_collision(const t_param params, t_speed* cellsIn, t_speed* cellsOut, int* obstacles)
+double propagate_collision(const t_param params, t_speed *restrict cellsIn, t_speed *restrict cellsOut, int* obstacles)
 {
   // collision locals
   const double w0 = (4.0 / 9.0 )*params.omega; // weighting factor
@@ -591,7 +592,7 @@ double calc_reynolds(const t_param params, t_speed* cells, int* obstacles)
   return av_velocity(params, cells, obstacles) * params.reynolds_dim / viscosity;
 }
 
-double av_velocity(const t_param params, t_speed* cells, int* obstacles)
+double av_velocity(const t_param params, t_speed *restrict cells, int *restrict obstacles)
 {
   int    tot_cells = 0;  /* no. of cells used in calculation */
   double tot_u;          /* accumulated magnitudes of velocity for each cell */
