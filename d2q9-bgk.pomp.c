@@ -96,6 +96,10 @@ int accelerate_flow_2(const t_param params, t_speed *restrict cells, int *restri
 double propagate_collide_1(const t_param params, t_speed *restrict cells, int *restrict obstacles);
 double propagate_collide_2(const t_param params, t_speed *restrict cells, int *restrict obstacles);
 
+/* compute average velocity */
+double av_velocity_1(const t_param params, t_speed *restrict cells, int *restrict obstacles);
+double av_velocity_2(const t_param params, t_speed *restrict cells, int *restrict obstacles);
+
 int write_values(const t_param params, t_speed *cells, int *obstacles, double *av_vels);
 
 /* finalise, including freeing up allocated memory */
@@ -105,10 +109,6 @@ int finalise(const t_param* params, t_speed** cells_ptr, t_speed** tmp_cells_ptr
 /* Sum all the densities in the grid.
 ** The total should remain constant from one timestep to the next. */
 double total_density(const t_param params, t_speed* cells);
-
-/* compute average velocity */
-double av_velocity_1(const t_param params, t_speed *restrict cells, int *restrict obstacles);
-double av_velocity_2(const t_param params, t_speed *restrict cells, int *restrict obstacles);
 
 /* calculate Reynolds number */
 double calc_reynolds(const t_param params, t_speed* cells, int* obstacles);
@@ -158,7 +158,6 @@ int main(int argc, char* argv[])
   {
   	accelerate_flow_1(params, cells, obstacles);
   	av_vels[tt] = propagate_collide_1(params, cells, obstacles);
-    //av_vels[tt] = av_velocity_1(params, cells, obstacles);
 #ifdef DEBUG
     printf("==timestep: %d==\n", tt);
     printf("av velocity: %.12E\n", av_vels[tt]);
@@ -167,7 +166,6 @@ int main(int argc, char* argv[])
 
   	accelerate_flow_2(params, cells, obstacles);
   	av_vels[tt+1] = propagate_collide_2(params, cells, obstacles);
-    //av_vels[tt+1] = av_velocity_2(params, cells, obstacles);
 #ifdef DEBUG
     printf("==timestep: %d==\n", tt+1);
     printf("av velocity: %.12E\n", av_vels[tt+1]);
@@ -199,13 +197,22 @@ int main(int argc, char* argv[])
 //
 int accelerate_flow_1(const t_param params, t_speed *restrict cells, int *restrict obstacles)
 {
-  /* compute weighting factors */
-  double w1 = params.density * params.accel / 9.0;
-  double w2 = params.density * params.accel / 36.0;
+  // compute weighting factors
+  const double w1 = params.density * params.accel / 9.0;
+  const double w2 = params.density * params.accel / 36.0;
 
   /* modify the 2nd row of the grid */
-  int ii = params.ny - 2;
+  const int ii = params.ny - 2;
 
+{
+  int pomp2_num_threads = omp_get_max_threads();
+  int pomp2_if = 1;
+  POMP2_Task_handle pomp2_old_task;
+  POMP2_Parallel_fork(&pomp2_region_1, pomp2_if, pomp2_num_threads, &pomp2_old_task, pomp2_ctc_1 );
+  #pragma omp parallel     default(none) shared(cells,obstacles)                  POMP2_DLIST_00001 firstprivate(pomp2_old_task) if(pomp2_if) num_threads(pomp2_num_threads)
+{   POMP2_Parallel_begin( &pomp2_region_1 );
+{   POMP2_For_enter( &pomp2_region_1, pomp2_ctc_1  );
+  #pragma omp          for                                       schedule(static)                   nowait
   for (int jj = 0; jj < params.nx; jj++)
   {
     /* if the cell is not occupied and
@@ -225,6 +232,14 @@ int accelerate_flow_1(const t_param params, t_speed *restrict cells, int *restri
       cells[ii * params.nx + jj].speeds[7] -= w2;
     }
   }
+{ POMP2_Task_handle pomp2_old_task;
+  POMP2_Implicit_barrier_enter( &pomp2_region_1, &pomp2_old_task );
+#pragma omp barrier
+  POMP2_Implicit_barrier_exit( &pomp2_region_1, pomp2_old_task ); }
+  POMP2_For_exit( &pomp2_region_1 );
+ }
+  POMP2_Parallel_end( &pomp2_region_1 ); }
+  POMP2_Parallel_join( &pomp2_region_1, pomp2_old_task ); }
 
   return EXIT_SUCCESS;
 }
@@ -244,7 +259,15 @@ double propagate_collide_1(const t_param params, t_speed *restrict cells, int *r
   // NB the collision step is called after
   // the propagate step and so values of interest
   // are in the scratch-space grid
-  //#pragma omp parallel for default(none) shared(cells,obstacles) private(tmp) schedule(static)
+{
+  int pomp2_num_threads = omp_get_max_threads();
+  int pomp2_if = 1;
+  POMP2_Task_handle pomp2_old_task;
+  POMP2_Parallel_fork(&pomp2_region_2, pomp2_if, pomp2_num_threads, &pomp2_old_task, pomp2_ctc_2 );
+  #pragma omp parallel     default(none) shared(cells,obstacles)                  reduction(+:tot_cells,tot_u) POMP2_DLIST_00002 firstprivate(pomp2_old_task) if(pomp2_if) num_threads(pomp2_num_threads)
+{   POMP2_Parallel_begin( &pomp2_region_2 );
+{   POMP2_For_enter( &pomp2_region_2, pomp2_ctc_2  );
+  #pragma omp          for                                       schedule(static)                                                nowait
   for (int ii = 0; ii < params.ny; ii++)
   {
     for (int jj = 0; jj < params.nx; jj++)
@@ -386,71 +409,16 @@ double propagate_collide_1(const t_param params, t_speed *restrict cells, int *r
 			}
     }
   }
+{ POMP2_Task_handle pomp2_old_task;
+  POMP2_Implicit_barrier_enter( &pomp2_region_2, &pomp2_old_task );
+#pragma omp barrier
+  POMP2_Implicit_barrier_exit( &pomp2_region_2, pomp2_old_task ); }
+  POMP2_For_exit( &pomp2_region_2 );
+ }
+  POMP2_Parallel_end( &pomp2_region_2 ); }
+  POMP2_Parallel_join( &pomp2_region_2, pomp2_old_task ); }
 
   //return EXIT_SUCCESS;
-  return tot_u / (double)tot_cells;
-}
-
-double av_velocity_1(const t_param params, t_speed *restrict cells, int *restrict obstacles)
-{
-  int    tot_cells = 0;  // no. of cells used in calculation
-  double tot_u = 0.0;    // accumulated magnitudes of velocity for each cell
-
-  /* loop over all non-blocked cells */
-  //#pragma omp parallel for default(none) shared(cells,obstacles) schedule(static) reduction(+:tot_cells,tot_u)
-  for (int ii = 0; ii < params.ny; ii++)
-  {
-    for (int jj = 0; jj < params.nx; jj++)
-    {
-      /* ignore occupied cells */
-      if (!obstacles[ii * params.nx + jj])
-      {
-	      // determine indices of axis-direction neighbours
-	      // respecting periodic boundary conditions (wrap around)
-	      int y_n = (ii + 1) % params.ny;
-	      int x_e = (jj + 1) % params.nx;
-	      int y_s = (ii == 0) ? (params.ny - 1) : (ii - 1);
-	      int x_w = (jj == 0) ? (params.nx - 1) : (jj - 1);
-
-        /* local density total */
-        double local_density = (
-	      												 + cells[ii  * params.nx + jj ].speeds[0] // central cell, no movement
-	     													 + cells[ii  * params.nx + x_w].speeds[1] // west 
-	     													 + cells[y_s * params.nx + jj ].speeds[2] // south
-	     													 + cells[ii  * params.nx + x_e].speeds[3] // east
-	     													 + cells[y_n * params.nx + jj ].speeds[4] // north
-	     													 + cells[y_s * params.nx + x_w].speeds[5] // south-west
-	     													 + cells[y_s * params.nx + x_e].speeds[6] // south-east
-	     													 + cells[y_n * params.nx + x_e].speeds[7] // north-east
-	     													 + cells[y_n * params.nx + x_w].speeds[8] // north-west 
-															 );
-
-        /* x-component of velocity */
-        double u_x = (
-											 + cells[ii  * params.nx + x_e].speeds[3]
-                       + cells[y_n * params.nx + x_e].speeds[7]
-                       + cells[y_s * params.nx + x_e].speeds[6]
-											 - cells[ii  * params.nx + x_w].speeds[1]
-                       - cells[y_n * params.nx + x_w].speeds[8]
-                       - cells[y_s * params.nx + x_w].speeds[5]
-										 ) / local_density;
-        /* compute y velocity component */
-        double u_y = (
-											 + cells[y_n * params.nx + jj ].speeds[4]
-                       + cells[y_n * params.nx + x_w].speeds[8]
-                       + cells[y_n * params.nx + x_e].speeds[7]
-											 - cells[y_s * params.nx + jj ].speeds[2]
-                       - cells[y_s * params.nx + x_w].speeds[5]
-                       - cells[y_s * params.nx + x_e].speeds[6]
-										 ) / local_density;
-        /* accumulate the norm of x- and y- velocity components */
-				tot_u += sqrt((u_x * u_x) + (u_y * u_y));
-        /* increase counter of inspected cells */
-        tot_cells++;
-      }
-    }
-  }
-
   return tot_u / (double)tot_cells;
 }
 
@@ -459,14 +427,23 @@ double av_velocity_1(const t_param params, t_speed *restrict cells, int *restric
 int accelerate_flow_2(const t_param params, t_speed *restrict cells, int *restrict obstacles)
 {
   // compute weighting factors
-  double w1 = params.density * params.accel / 9.0;
-  double w2 = params.density * params.accel / 36.0;
+  const double w1 = params.density * params.accel / 9.0;
+  const double w2 = params.density * params.accel / 36.0;
 
   // modify the 2nd row of the grid
-  int ii = params.ny - 2;
-  int y_n = (ii + 1) % params.ny;
-  int y_s = (ii == 0) ? (params.ny - 1) : (ii - 1);
+  const int ii = params.ny - 2;
+  const int y_n = (ii + 1) % params.ny;
+  const int y_s = (ii == 0) ? (params.ny - 1) : (ii - 1);
 
+{
+  int pomp2_num_threads = omp_get_max_threads();
+  int pomp2_if = 1;
+  POMP2_Task_handle pomp2_old_task;
+  POMP2_Parallel_fork(&pomp2_region_3, pomp2_if, pomp2_num_threads, &pomp2_old_task, pomp2_ctc_3 );
+  #pragma omp parallel     default(none) shared(cells,obstacles)                  POMP2_DLIST_00003 firstprivate(pomp2_old_task) if(pomp2_if) num_threads(pomp2_num_threads)
+{   POMP2_Parallel_begin( &pomp2_region_3 );
+{   POMP2_For_enter( &pomp2_region_3, pomp2_ctc_3  );
+  #pragma omp          for                                       schedule(static)                   nowait
   for (int jj = 0; jj < params.nx; jj++)
   {
   	int x_e = (jj + 1) % params.nx;
@@ -489,6 +466,14 @@ int accelerate_flow_2(const t_param params, t_speed *restrict cells, int *restri
       cells[y_s * params.nx + x_w].speeds[5] -= w2;
     }
   }
+{ POMP2_Task_handle pomp2_old_task;
+  POMP2_Implicit_barrier_enter( &pomp2_region_3, &pomp2_old_task );
+#pragma omp barrier
+  POMP2_Implicit_barrier_exit( &pomp2_region_3, pomp2_old_task ); }
+  POMP2_For_exit( &pomp2_region_3 );
+ }
+  POMP2_Parallel_end( &pomp2_region_3 ); }
+  POMP2_Parallel_join( &pomp2_region_3, pomp2_old_task ); }
 
   return EXIT_SUCCESS;
 }
@@ -508,7 +493,15 @@ double propagate_collide_2(const t_param params, t_speed *restrict cells, int *r
   // NB the collision step is called after
   // the propagate step and so values of interest
   // are in the scratch-space grid
-  //#pragma omp parallel for default(none) shared(cells,obstacles) private(tmp) schedule(static)
+{
+  int pomp2_num_threads = omp_get_max_threads();
+  int pomp2_if = 1;
+  POMP2_Task_handle pomp2_old_task;
+  POMP2_Parallel_fork(&pomp2_region_4, pomp2_if, pomp2_num_threads, &pomp2_old_task, pomp2_ctc_4 );
+  #pragma omp parallel     default(none) shared(cells,obstacles)                  reduction(+:tot_cells,tot_u) POMP2_DLIST_00004 firstprivate(pomp2_old_task) if(pomp2_if) num_threads(pomp2_num_threads)
+{   POMP2_Parallel_begin( &pomp2_region_4 );
+{   POMP2_For_enter( &pomp2_region_4, pomp2_ctc_4  );
+  #pragma omp          for                                       schedule(static)                                                nowait
   for (int ii = 0; ii < params.ny; ii++)
   {
     for (int jj = 0; jj < params.nx; jj++)
@@ -631,8 +624,81 @@ double propagate_collide_2(const t_param params, t_speed *restrict cells, int *r
 			}
     }
   }
+{ POMP2_Task_handle pomp2_old_task;
+  POMP2_Implicit_barrier_enter( &pomp2_region_4, &pomp2_old_task );
+#pragma omp barrier
+  POMP2_Implicit_barrier_exit( &pomp2_region_4, pomp2_old_task ); }
+  POMP2_For_exit( &pomp2_region_4 );
+ }
+  POMP2_Parallel_end( &pomp2_region_4 ); }
+  POMP2_Parallel_join( &pomp2_region_4, pomp2_old_task ); }
 
   //return EXIT_SUCCESS;
+  return tot_u / (double)tot_cells;
+}
+
+// ----------------------------------------------------------------
+
+double av_velocity_1(const t_param params, t_speed *restrict cells, int *restrict obstacles)
+{
+  int    tot_cells = 0;  // no. of cells used in calculation
+  double tot_u = 0.0;    // accumulated magnitudes of velocity for each cell
+
+  /* loop over all non-blocked cells */
+  //#pragma omp parallel for default(none) shared(cells,obstacles) schedule(static) reduction(+:tot_cells,tot_u)
+  for (int ii = 0; ii < params.ny; ii++)
+  {
+    for (int jj = 0; jj < params.nx; jj++)
+    {
+      /* ignore occupied cells */
+      if (!obstacles[ii * params.nx + jj])
+      {
+	      // determine indices of axis-direction neighbours
+	      // respecting periodic boundary conditions (wrap around)
+	      int y_n = (ii + 1) % params.ny;
+	      int x_e = (jj + 1) % params.nx;
+	      int y_s = (ii == 0) ? (params.ny - 1) : (ii - 1);
+	      int x_w = (jj == 0) ? (params.nx - 1) : (jj - 1);
+
+        /* local density total */
+        double local_density = (
+	      												 + cells[ii  * params.nx + jj ].speeds[0] // central cell, no movement
+	     													 + cells[ii  * params.nx + x_w].speeds[1] // west 
+	     													 + cells[y_s * params.nx + jj ].speeds[2] // south
+	     													 + cells[ii  * params.nx + x_e].speeds[3] // east
+	     													 + cells[y_n * params.nx + jj ].speeds[4] // north
+	     													 + cells[y_s * params.nx + x_w].speeds[5] // south-west
+	     													 + cells[y_s * params.nx + x_e].speeds[6] // south-east
+	     													 + cells[y_n * params.nx + x_e].speeds[7] // north-east
+	     													 + cells[y_n * params.nx + x_w].speeds[8] // north-west 
+															 );
+
+        /* x-component of velocity */
+        double u_x = (
+											 + cells[ii  * params.nx + x_e].speeds[3]
+                       + cells[y_n * params.nx + x_e].speeds[7]
+                       + cells[y_s * params.nx + x_e].speeds[6]
+											 - cells[ii  * params.nx + x_w].speeds[1]
+                       - cells[y_n * params.nx + x_w].speeds[8]
+                       - cells[y_s * params.nx + x_w].speeds[5]
+										 ) / local_density;
+        /* compute y velocity component */
+        double u_y = (
+											 + cells[y_n * params.nx + jj ].speeds[4]
+                       + cells[y_n * params.nx + x_w].speeds[8]
+                       + cells[y_n * params.nx + x_e].speeds[7]
+											 - cells[y_s * params.nx + jj ].speeds[2]
+                       - cells[y_s * params.nx + x_w].speeds[5]
+                       - cells[y_s * params.nx + x_e].speeds[6]
+										 ) / local_density;
+        /* accumulate the norm of x- and y- velocity components */
+				tot_u += sqrt((u_x * u_x) + (u_y * u_y));
+        /* increase counter of inspected cells */
+        tot_cells++;
+      }
+    }
+  }
+
   return tot_u / (double)tot_cells;
 }
 
@@ -686,8 +752,6 @@ double av_velocity_2(const t_param params, t_speed *restrict cells, int *restric
 
   return tot_u / (double)tot_cells;
 }
-
-// ----------------------------------------------------------------
 
 int initialise(const char* paramfile, const char* obstaclefile,
                t_param* params, t_speed** cells_ptr, t_speed** tmp_cells_ptr,
