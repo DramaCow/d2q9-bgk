@@ -158,7 +158,8 @@ int main(int argc, char* argv[])
 
   for (int tt = 0; tt < params.maxIters; tt++)
   {
-    timestep(params, cells, tmp_cells, obstacles); //av_velocity(params, cells, obstacles);
+    //av_vels[tt] = timestep(params, cells, tmp_cells, obstacles);
+    timestep(params, cells, tmp_cells, obstacles);
       t_speed *tmp = cells; // ]
       cells = tmp_cells;    // ]-- swap cells with tmp_cells
       tmp_cells = tmp;      // ]
@@ -242,11 +243,11 @@ double propagate_collision(const t_param params, t_speed *restrict cellsIn, t_sp
   const double w1 = (1.0 / 9.0 )*params.omega; // weighting factor
   const double w2 = (1.0 / 36.0)*params.omega; // weighting factor
 
-  /*
+	/*
   // average velocity locals
   int tot_cells = 0; // no. of cells used in calculation
   double tot_u = 0.0; // accumulated magnitudes of velocity for each cell
-  */
+	*/
 
   // temporary speeds array 
   // each thread will receive a private version  
@@ -256,6 +257,7 @@ double propagate_collision(const t_param params, t_speed *restrict cellsIn, t_sp
   // NB the collision step is called after
   // the propagate step and so values of interest
   // are in the scratch-space grid
+  #pragma omp parallel for default(none) shared(cellsIn,cellsOut,obstacles) private(tmp) schedule(static)
   for (int ii = 0; ii < params.ny; ii++)
   {
     for (int jj = 0; jj < params.nx; jj++)
@@ -348,7 +350,7 @@ double propagate_collision(const t_param params, t_speed *restrict cellsIn, t_sp
 				  cellsOut[ii * params.nx + jj].speeds[kk] = (1.0 - params.omega)*tmp.speeds[kk] + omega_d_equ[kk];
 				}
 
-        /*
+				/*
         // ========================
         // === AVERAGE VELOCITY ===
         // ========================
@@ -381,7 +383,7 @@ double propagate_collision(const t_param params, t_speed *restrict cellsIn, t_sp
         tot_u += sqrt((u_x * u_x) + (u_y * u_y));
         // increase counter of inspected cells
         ++tot_cells;
-        */
+				*/
       }
 
       // ===============
@@ -594,13 +596,11 @@ double calc_reynolds(const t_param params, t_speed* cells, int* obstacles)
 
 double av_velocity(const t_param params, t_speed *restrict cells, int *restrict obstacles)
 {
-  int    tot_cells = 0;  /* no. of cells used in calculation */
-  double tot_u;          /* accumulated magnitudes of velocity for each cell */
-
-  /* initialise */
-  tot_u = 0.0;
+  int    tot_cells = 0;  // no. of cells used in calculation
+  double tot_u = 0.0;    // accumulated magnitudes of velocity for each cell
 
   /* loop over all non-blocked cells */
+  #pragma omp parallel for default(none) shared(cells,obstacles) schedule(static) reduction(+:tot_cells,tot_u)
   for (int ii = 0; ii < params.ny; ii++)
   {
     for (int jj = 0; jj < params.nx; jj++)
@@ -641,7 +641,7 @@ double av_velocity(const t_param params, t_speed *restrict cells, int *restrict 
         /* accumulate the norm of x- and y- velocity components */
 				tot_u += sqrt((u_x * u_x) + (u_y * u_y));
         /* increase counter of inspected cells */
-        ++tot_cells;
+        tot_cells++;
       }
     }
   }
@@ -651,8 +651,9 @@ double av_velocity(const t_param params, t_speed *restrict cells, int *restrict 
 
 double total_density(const t_param params, t_speed* cells)
 {
-  double total = 0.0;  /* accumulator */
+  double total = 0.0; // accumulator
 
+  #pragma omp parallel for default(none) shared(cells) schedule(static) reduction(+:total)
   for (int ii = 0; ii < params.ny; ii++)
   {
     for (int jj = 0; jj < params.nx; jj++)
