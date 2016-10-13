@@ -84,7 +84,7 @@ typedef struct
 
 /* load params, allocate memory, load obstacles & initialise fluid particle densities */
 int initialise(const char* paramfile, const char* obstaclefile,
-               t_param* params, t_speed** cells_ptr, t_speed** tmp_cells_ptr,
+               t_param* params, t_speed** cells_ptr,
                int** obstacles_ptr, double** av_vels_ptr);
 
 // The main calculation methods.
@@ -100,7 +100,7 @@ double av_velocity_2(const t_param params, t_speed *restrict cells, int *restric
 int write_values(const t_param params, t_speed *cells, int *obstacles, double *av_vels);
 
 /* finalise, including freeing up allocated memory */
-int finalise(const t_param* params, t_speed** cells_ptr, t_speed** tmp_cells_ptr,
+int finalise(const t_param* params, t_speed** cells_ptr,
              int** obstacles_ptr, double** av_vels_ptr);
 
 /* Sum all the densities in the grid.
@@ -124,7 +124,6 @@ int main(int argc, char* argv[])
   char*    obstaclefile = NULL; /* name of a the input obstacle file */
   t_param  params;              /* struct to hold parameter values */
   t_speed* cells     = NULL;    /* grid containing fluid densities */
-  t_speed* tmp_cells = NULL;    /* scratch space */
   int*     obstacles = NULL;    /* grid indicating which cells are blocked */
   double* av_vels   = NULL;     /* a record of the av. velocity computed for each timestep */
   struct timeval timstr;        /* structure to hold elapsed time */
@@ -145,7 +144,7 @@ int main(int argc, char* argv[])
   }
 
   /* initialise our data structures and load values from file */
-  initialise(paramfile, obstaclefile, &params, &cells, &tmp_cells, &obstacles, &av_vels);
+  initialise(paramfile, obstaclefile, &params, &cells, &obstacles, &av_vels);
 
   /* iterate for maxIters timesteps */
   gettimeofday(&timstr, NULL);
@@ -185,7 +184,7 @@ int main(int argc, char* argv[])
   printf("Elapsed user CPU time:\t\t%.6lf (s)\n", usrtim);
   printf("Elapsed system CPU time:\t%.6lf (s)\n", systim);
   write_values(params, cells, obstacles, av_vels);
-  finalise(&params, &cells, &tmp_cells, &obstacles, &av_vels);
+  finalise(&params, &cells, &obstacles, &av_vels);
 
   return EXIT_SUCCESS;
 }
@@ -687,7 +686,7 @@ double av_velocity_2(const t_param params, t_speed *restrict cells, int *restric
 }
 
 int initialise(const char* paramfile, const char* obstaclefile,
-               t_param* params, t_speed** cells_ptr, t_speed** tmp_cells_ptr,
+               t_param* params, t_speed** cells_ptr,
                int** obstacles_ptr, double** av_vels_ptr)
 {
   char   message[1024];  /* message buffer */
@@ -760,11 +759,6 @@ int initialise(const char* paramfile, const char* obstaclefile,
   *cells_ptr = (t_speed*)malloc(sizeof(t_speed) * (params->ny * params->nx));
 
   if (*cells_ptr == NULL) die("cannot allocate memory for cells", __LINE__, __FILE__);
-
-  /* 'helper' grid, used as scratch space */
-  *tmp_cells_ptr = (t_speed*)malloc(sizeof(t_speed) * (params->ny * params->nx));
-
-  if (*tmp_cells_ptr == NULL) die("cannot allocate memory for tmp_cells", __LINE__, __FILE__);
 
   /* the map of obstacles */
   *obstacles_ptr = malloc(sizeof(int) * (params->ny * params->nx));
@@ -841,7 +835,7 @@ int initialise(const char* paramfile, const char* obstaclefile,
   return EXIT_SUCCESS;
 }
 
-int finalise(const t_param* params, t_speed** cells_ptr, t_speed** tmp_cells_ptr,
+int finalise(const t_param* params, t_speed** cells_ptr,
              int** obstacles_ptr, double** av_vels_ptr)
 {
   /*
@@ -849,9 +843,6 @@ int finalise(const t_param* params, t_speed** cells_ptr, t_speed** tmp_cells_ptr
   */
   free(*cells_ptr);
   *cells_ptr = NULL;
-
-  free(*tmp_cells_ptr);
-  *tmp_cells_ptr = NULL;
 
   free(*obstacles_ptr);
   *obstacles_ptr = NULL;

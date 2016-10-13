@@ -46,5 +46,7 @@ clean:
 	rm -f $(EXES)
 	rm -f *.pomp.*
 	rm -f cachegrind.out.*
+	rm -f callgrind.out.*
+	rm -f profile.0.0.*
 	rm -f gmon.out
 
