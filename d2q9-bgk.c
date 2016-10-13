@@ -260,16 +260,16 @@ double propagate_collide_1(const t_param params, t_speed *restrict cells, int *r
         // propagate densities to neighbouring cells, following
         // appropriate directions of travel and writing into
         // scratch space grid
-        t_speed tmp;
-        tmp.speeds[0] = cells[ii  * params.nx + jj ].speeds[0]; // central cell, no movement
-        tmp.speeds[1] = cells[ii  * params.nx + x_w].speeds[1]; // west 
-        tmp.speeds[2] = cells[y_s * params.nx + jj ].speeds[2]; // south
-        tmp.speeds[3] = cells[ii  * params.nx + x_e].speeds[3]; // east
-        tmp.speeds[4] = cells[y_n * params.nx + jj ].speeds[4]; // north
-        tmp.speeds[5] = cells[y_s * params.nx + x_w].speeds[5]; // south-west
-        tmp.speeds[6] = cells[y_s * params.nx + x_e].speeds[6]; // south-east
-        tmp.speeds[7] = cells[y_n * params.nx + x_e].speeds[7]; // north-east
-        tmp.speeds[8] = cells[y_n * params.nx + x_w].speeds[8]; // north-west 
+        double tmp_speeds[NSPEEDS];
+        tmp_speeds[0] = cells[ii  * params.nx + jj ].speeds[0]; // central cell, no movement
+        tmp_speeds[1] = cells[ii  * params.nx + x_w].speeds[1]; // west 
+        tmp_speeds[2] = cells[y_s * params.nx + jj ].speeds[2]; // south
+        tmp_speeds[3] = cells[ii  * params.nx + x_e].speeds[3]; // east
+        tmp_speeds[4] = cells[y_n * params.nx + jj ].speeds[4]; // north
+        tmp_speeds[5] = cells[y_s * params.nx + x_w].speeds[5]; // south-west
+        tmp_speeds[6] = cells[y_s * params.nx + x_e].speeds[6]; // south-east
+        tmp_speeds[7] = cells[y_n * params.nx + x_e].speeds[7]; // north-east
+        tmp_speeds[8] = cells[y_n * params.nx + x_w].speeds[8]; // north-west 
 
         // =================
         // === COLLISION === don't consider occupied cells
@@ -278,27 +278,27 @@ double propagate_collide_1(const t_param params, t_speed *restrict cells, int *r
         double local_density = 0.0;
         for (int kk = 0; kk < NSPEEDS; kk++)
         {
-          local_density += tmp.speeds[kk];
+          local_density += tmp_speeds[kk];
         }
 
         // compute x velocity component
         double u_x = ( 
-                       + tmp.speeds[1]
-                       + tmp.speeds[5]
-                       + tmp.speeds[8]
-                       - tmp.speeds[3]
-                       - tmp.speeds[6]
-                       - tmp.speeds[7] 
+                       + tmp_speeds[1]
+                       + tmp_speeds[5]
+                       + tmp_speeds[8]
+                       - tmp_speeds[3]
+                       - tmp_speeds[6]
+                       - tmp_speeds[7] 
                      ) / local_density;
                      
         // compute y velocity component
         double u_y = ( 
-                       + tmp.speeds[2]
-                       + tmp.speeds[5]
-                       + tmp.speeds[6]
-                       - tmp.speeds[4]
-                       - tmp.speeds[7]
-                       - tmp.speeds[8] 
+                       + tmp_speeds[2]
+                       + tmp_speeds[5]
+                       + tmp_speeds[6]
+                       - tmp_speeds[4]
+                       - tmp_speeds[7]
+                       - tmp_speeds[8] 
                      ) / local_density;
 
         // velocity squared
@@ -331,15 +331,15 @@ double propagate_collide_1(const t_param params, t_speed *restrict cells, int *r
 
         // relaxation step
         // store cells speeds in adjacent cells
-        cells[ii  * params.nx + jj ].speeds[0] = (1.0 - params.omega)*tmp.speeds[0] + omega_d_equ[0]; // central cell, no movement
-        cells[ii  * params.nx + x_w].speeds[1] = (1.0 - params.omega)*tmp.speeds[3] + omega_d_equ[3]; // west
-        cells[y_s * params.nx + jj ].speeds[2] = (1.0 - params.omega)*tmp.speeds[4] + omega_d_equ[4]; // south
-        cells[ii  * params.nx + x_e].speeds[3] = (1.0 - params.omega)*tmp.speeds[1] + omega_d_equ[1]; // east
-        cells[y_n * params.nx + jj ].speeds[4] = (1.0 - params.omega)*tmp.speeds[2] + omega_d_equ[2]; // north
-        cells[y_s * params.nx + x_w].speeds[5] = (1.0 - params.omega)*tmp.speeds[7] + omega_d_equ[7]; // south-west
-        cells[y_s * params.nx + x_e].speeds[6] = (1.0 - params.omega)*tmp.speeds[8] + omega_d_equ[8]; // south-east 
-        cells[y_n * params.nx + x_e].speeds[7] = (1.0 - params.omega)*tmp.speeds[5] + omega_d_equ[5]; // north-east
-        cells[y_n * params.nx + x_w].speeds[8] = (1.0 - params.omega)*tmp.speeds[6] + omega_d_equ[6]; // north-west
+        cells[ii  * params.nx + jj ].speeds[0] = (1.0 - params.omega)*tmp_speeds[0] + omega_d_equ[0]; // central cell, no movement
+        cells[ii  * params.nx + x_w].speeds[1] = (1.0 - params.omega)*tmp_speeds[3] + omega_d_equ[3]; // west
+        cells[y_s * params.nx + jj ].speeds[2] = (1.0 - params.omega)*tmp_speeds[4] + omega_d_equ[4]; // south
+        cells[ii  * params.nx + x_e].speeds[3] = (1.0 - params.omega)*tmp_speeds[1] + omega_d_equ[1]; // east
+        cells[y_n * params.nx + jj ].speeds[4] = (1.0 - params.omega)*tmp_speeds[2] + omega_d_equ[2]; // north
+        cells[y_s * params.nx + x_w].speeds[5] = (1.0 - params.omega)*tmp_speeds[7] + omega_d_equ[7]; // south-west
+        cells[y_s * params.nx + x_e].speeds[6] = (1.0 - params.omega)*tmp_speeds[8] + omega_d_equ[8]; // south-east 
+        cells[y_n * params.nx + x_e].speeds[7] = (1.0 - params.omega)*tmp_speeds[5] + omega_d_equ[5]; // north-east
+        cells[y_n * params.nx + x_w].speeds[8] = (1.0 - params.omega)*tmp_speeds[6] + omega_d_equ[6]; // north-west
 
         // ========================
         // === AVERAGE VELOCITY ===
@@ -454,16 +454,16 @@ double propagate_collide_2(const t_param params, t_speed *restrict cells, int *r
         // ===================
         // this iteration only uses local speeds (no need to look at neighbours)
         // [[note: there speeds are "facing" inwards]]
-        t_speed tmp;
-        tmp.speeds[0] = cells[ii * params.nx + jj].speeds[0];
-        tmp.speeds[1] = cells[ii * params.nx + jj].speeds[3];
-        tmp.speeds[2] = cells[ii * params.nx + jj].speeds[4];
-        tmp.speeds[3] = cells[ii * params.nx + jj].speeds[1];
-        tmp.speeds[4] = cells[ii * params.nx + jj].speeds[2];
-        tmp.speeds[5] = cells[ii * params.nx + jj].speeds[7];
-        tmp.speeds[6] = cells[ii * params.nx + jj].speeds[8];
-        tmp.speeds[7] = cells[ii * params.nx + jj].speeds[5];
-        tmp.speeds[8] = cells[ii * params.nx + jj].speeds[6];
+        double tmp_speeds[NSPEEDS];
+        tmp_speeds[0] = cells[ii * params.nx + jj].speeds[0];
+        tmp_speeds[1] = cells[ii * params.nx + jj].speeds[3];
+        tmp_speeds[2] = cells[ii * params.nx + jj].speeds[4];
+        tmp_speeds[3] = cells[ii * params.nx + jj].speeds[1];
+        tmp_speeds[4] = cells[ii * params.nx + jj].speeds[2];
+        tmp_speeds[5] = cells[ii * params.nx + jj].speeds[7];
+        tmp_speeds[6] = cells[ii * params.nx + jj].speeds[8];
+        tmp_speeds[7] = cells[ii * params.nx + jj].speeds[5];
+        tmp_speeds[8] = cells[ii * params.nx + jj].speeds[6];
 
         // =================
         // === COLLISION === don't consider occupied cells
@@ -472,27 +472,27 @@ double propagate_collide_2(const t_param params, t_speed *restrict cells, int *r
         double local_density = 0.0;
         for (int kk = 0; kk < NSPEEDS; kk++)
         {
-          local_density += tmp.speeds[kk];
+          local_density += tmp_speeds[kk];
         }
 
         // compute x velocity component
         double u_x = ( 
-                       + tmp.speeds[1]
-                       + tmp.speeds[5]
-                       + tmp.speeds[8]
-                       - tmp.speeds[3]
-                       - tmp.speeds[6]
-                       - tmp.speeds[7] 
+                       + tmp_speeds[1]
+                       + tmp_speeds[5]
+                       + tmp_speeds[8]
+                       - tmp_speeds[3]
+                       - tmp_speeds[6]
+                       - tmp_speeds[7] 
                      ) / local_density;
                      
         // compute y velocity component
         double u_y = ( 
-                       + tmp.speeds[2]
-                       + tmp.speeds[5]
-                       + tmp.speeds[6]
-                       - tmp.speeds[4]
-                       - tmp.speeds[7]
-                       - tmp.speeds[8] 
+                       + tmp_speeds[2]
+                       + tmp_speeds[5]
+                       + tmp_speeds[6]
+                       - tmp_speeds[4]
+                       - tmp_speeds[7]
+                       - tmp_speeds[8] 
                      ) / local_density;
 
         // velocity squared
@@ -527,7 +527,7 @@ double propagate_collide_2(const t_param params, t_speed *restrict cells, int *r
         // store cells speeds in current cell only
         for (int kk = 0; kk < NSPEEDS; kk++)
         {
-          cells[ii * params.nx + jj].speeds[kk] = (1.0 - params.omega)*tmp.speeds[kk] + omega_d_equ[kk];
+          cells[ii * params.nx + jj].speeds[kk] = (1.0 - params.omega)*tmp_speeds[kk] + omega_d_equ[kk];
         }
 
         // ========================
