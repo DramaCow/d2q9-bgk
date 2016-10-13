@@ -1,11 +1,11 @@
-Running on host node31-032
-Time is Thu Oct 13 22:08:45 BST 2016
+Running on host node31-031
+Time is Thu Oct 13 22:20:17 BST 2016
 Directory is /panfs/panasas01/cosc/sc14809/D2Q9-BGK
-PBS job ID is 4961362.master.cm.cluster
+PBS job ID is 4961374.master.cm.cluster
 This jobs runs on the following machines:
-node31-032
+node31-031
 ==done==
 Reynolds number:		1.007703420253E+01
-Elapsed time:			40.468859 (s)
-Elapsed user CPU time:		528.626636 (s)
-Elapsed system CPU time:	105.860906 (s)
+Elapsed time:			236.256563 (s)
+Elapsed user CPU time:		235.689169 (s)
+Elapsed system CPU time:	0.004999 (s)
