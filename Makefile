@@ -3,13 +3,13 @@
 EXE1=d2q9-bgk.exe
 EXES=$(EXE1)
 
-#CC=tau_cc.sh
-CC=gcc
+CC=tau_cc.sh
+#CC=gcc
 #CFLAGS= -std=c99 -Wall -Ofast -DDEBUG -pg -g -fassociative-math -freciprocal-math -fno-signed-zeros -fno-trapping-math -frename-registers -funroll-loops -fprofile-generate
 #CFLAGS= -std=c99 -Wall -Ofast -DDEBUG -pg -g -fassociative-math -freciprocal-math -fno-signed-zeros -fno-trapping-math -frename-registers -funroll-loops -fprofile-use
 #CFLAGS= -std=c99 -Wall -Ofast -DDEBUG -pg -g -fprofile-generate
 #CFLAGS= -std=c99 -Wall -Ofast -DDEBUG -pg -g -fprofile-use
-CFLAGS= -std=c99 -Wall -Ofast -DDEBUG -pg -g #-fopenmp
+CFLAGS= -std=c99 -Wall -O3 -DDEBUG -pg -g #-fopenmp
 LIBS = -lm
 
 FINAL_STATE_FILE=./final_state.dat
