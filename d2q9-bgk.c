@@ -196,8 +196,10 @@ int main(int argc, char* argv[])
   return EXIT_SUCCESS;
 }
 
-// ----------------------------------------------------------------
-//
+// ======================
+// === CORE FUNCTIONS ===
+// ======================
+
 int accelerate_flow_1(const t_param params, t_speed *restrict cells, int *restrict obstacles)
 {
   // compute weighting factors
@@ -205,26 +207,26 @@ int accelerate_flow_1(const t_param params, t_speed *restrict cells, int *restri
   const double w2 = params.density * params.accel / 36.0;
 
   /* modify the 2nd row of the grid */
-  const int ii = params.ny - 2;
+  const int row2 = params.ny - 2;
 
   #pragma omp parallel for default(none) shared(cells,obstacles) schedule(static)
   for (int jj = 0; jj < params.nx; jj++)
   {
     /* if the cell is not occupied and
     ** we don't send a negative density */
-    if (!obstacles[ii * params.nx + jj]
-        && (cells[ii * params.nx + jj].speeds[3] - w1) > 0.0
-        && (cells[ii * params.nx + jj].speeds[6] - w2) > 0.0
-        && (cells[ii * params.nx + jj].speeds[7] - w2) > 0.0)
+    if (!obstacles[row2 * params.nx + jj]
+        && (cells[row2 * params.nx + jj].speeds[3] - w1) > 0.0
+        && (cells[row2 * params.nx + jj].speeds[6] - w2) > 0.0
+        && (cells[row2 * params.nx + jj].speeds[7] - w2) > 0.0)
     {
       /* increase 'east-side' densities */
-      cells[ii * params.nx + jj].speeds[1] += w1;
-      cells[ii * params.nx + jj].speeds[5] += w2;
-      cells[ii * params.nx + jj].speeds[8] += w2;
+      cells[row2 * params.nx + jj].speeds[1] += w1;
+      cells[row2 * params.nx + jj].speeds[5] += w2;
+      cells[row2 * params.nx + jj].speeds[8] += w2;
       /* decrease 'west-side' densities */
-      cells[ii * params.nx + jj].speeds[3] -= w1;
-      cells[ii * params.nx + jj].speeds[6] -= w2;
-      cells[ii * params.nx + jj].speeds[7] -= w2;
+      cells[row2 * params.nx + jj].speeds[3] -= w1;
+      cells[row2 * params.nx + jj].speeds[6] -= w2;
+      cells[row2 * params.nx + jj].speeds[7] -= w2;
     }
   }
 
@@ -239,13 +241,9 @@ double propagate_collide_1(const t_param params, t_speed *restrict cells, int *r
   const double w2 = (1.0 / 36.0)*params.omega; // weighting factor
 
   // average velocity locals  
-//  int    tot_cells = 0;  // no. of cells used in calculation
   double tot_u = 0.0;    // accumulated magnitudes of velocity for each cell
 
   // loop over the cells in the grid
-  // NB the collision step is called after
-  // the propagate step and so values of interest
-  // are in the scratch-space grid
   #pragma omp parallel for default(none) shared(cells,obstacles) schedule(static) reduction(+:tot_u)
   for (int ii = 0; ii < params.ny; ii++)
   {
@@ -347,55 +345,14 @@ double propagate_collide_1(const t_param params, t_speed *restrict cells, int *r
         cells[y_n * params.nx + x_e].speeds[7] = (1.0 - params.omega)*tmp_speeds[5] + omega_d_equ[5]; // north-east
         cells[y_n * params.nx + x_w].speeds[8] = (1.0 - params.omega)*tmp_speeds[6] + omega_d_equ[6]; // north-west
 
-        // ========================
-        // === AVERAGE VELOCITY ===
-        // ========================
-/*
-        // local density total
-        local_density = (
-                           + cells[ii  * params.nx + jj ].speeds[0] // central cell, no movement
-                           + cells[ii  * params.nx + x_w].speeds[1] // west 
-                           + cells[y_s * params.nx + jj ].speeds[2] // south
-                           + cells[ii  * params.nx + x_e].speeds[3] // east
-                           + cells[y_n * params.nx + jj ].speeds[4] // north
-                           + cells[y_s * params.nx + x_w].speeds[5] // south-west
-                           + cells[y_s * params.nx + x_e].speeds[6] // south-east
-                           + cells[y_n * params.nx + x_e].speeds[7] // north-east
-                           + cells[y_n * params.nx + x_w].speeds[8] // north-west 
-                        );
-
-        // x-component of velocity
-        u_x = (
-                + cells[ii  * params.nx + x_e].speeds[3]
-                + cells[y_n * params.nx + x_e].speeds[7]
-                + cells[y_s * params.nx + x_e].speeds[6]
-                - cells[ii  * params.nx + x_w].speeds[1]
-                - cells[y_n * params.nx + x_w].speeds[8]
-                - cells[y_s * params.nx + x_w].speeds[5]
-              ) / local_density;
-        // compute y velocity component
-        u_y = (
-                + cells[y_n * params.nx + jj ].speeds[4]
-                + cells[y_n * params.nx + x_w].speeds[8]
-                + cells[y_n * params.nx + x_e].speeds[7]
-                - cells[y_s * params.nx + jj ].speeds[2]
-                - cells[y_s * params.nx + x_w].speeds[5]
-                - cells[y_s * params.nx + x_e].speeds[6]
-              ) / local_density;
-*/
         // accumulate the norm of x- and y- velocity components
         tot_u += sqrt((u_x * u_x) + (u_y * u_y));
-        // increase counter of inspected cells
-//        tot_cells++;
       }
     }
   }
 
-  //return EXIT_SUCCESS;
-  return tot_u;// / (double)tot_cells;
+  return tot_u;
 }
-
-// ----------------------------------------------------------------
 
 int accelerate_flow_2(const t_param params, t_speed *restrict cells, int *restrict obstacles)
 {
@@ -404,9 +361,9 @@ int accelerate_flow_2(const t_param params, t_speed *restrict cells, int *restri
   const double w2 = params.density * params.accel / 36.0;
 
   // modify the 2nd row of the grid
-  const int ii = params.ny - 2;
-  const int y_n = (ii + 1) % params.ny;
-  const int y_s = (ii == 0) ? (params.ny - 1) : (ii - 1);
+  const int row1 = params.ny - 1;
+  const int row2 = params.ny - 2;
+  const int row3 = params.ny - 3;
 
   #pragma omp parallel for default(none) shared(cells,obstacles) schedule(static)
   for (int jj = 0; jj < params.nx; jj++)
@@ -416,19 +373,19 @@ int accelerate_flow_2(const t_param params, t_speed *restrict cells, int *restri
 
     // if the cell is not occupied and
     // we don't send a negative density
-    if (!obstacles[ii * params.nx + jj]
-        && (cells[ii  * params.nx + x_w].speeds[1] - w1) > 0.0
-        && (cells[y_n * params.nx + x_w].speeds[8] - w2) > 0.0
-        && (cells[y_s * params.nx + x_w].speeds[5] - w2) > 0.0)
+    if (!obstacles[row2 * params.nx + jj]
+        && (cells[row2 * params.nx + x_w].speeds[1] - w1) > 0.0
+        && (cells[row1 * params.nx + x_w].speeds[8] - w2) > 0.0
+        && (cells[row3 * params.nx + x_w].speeds[5] - w2) > 0.0)
     {
       /* increase 'east-side' densities */
-      cells[ii  * params.nx + x_e].speeds[3] += w1;
-      cells[y_n * params.nx + x_e].speeds[7] += w2;
-      cells[y_s * params.nx + x_e].speeds[6] += w2;
+      cells[row2 * params.nx + x_e].speeds[3] += w1;
+      cells[row1 * params.nx + x_e].speeds[7] += w2;
+      cells[row3 * params.nx + x_e].speeds[6] += w2;
       /* decrease 'west-side' densities */
-      cells[ii  * params.nx + x_w].speeds[1] -= w1;
-      cells[y_n * params.nx + x_w].speeds[8] -= w2;
-      cells[y_s * params.nx + x_w].speeds[5] -= w2;
+      cells[row2 * params.nx + x_w].speeds[1] -= w1;
+      cells[row1 * params.nx + x_w].speeds[8] -= w2;
+      cells[row3 * params.nx + x_w].speeds[5] -= w2;
     }
   }
 
@@ -443,13 +400,9 @@ double propagate_collide_2(const t_param params, t_speed *restrict cells, int *r
   const double w2 = (1.0 / 36.0)*params.omega; // weighting factor
 
   // average velocity locals  
-//  int    tot_cells = 0;  // no. of cells used in calculation
   double tot_u = 0.0;    // accumulated magnitudes of velocity for each cell
 
   // loop over the cells in the grid
-  // NB the collision step is called after
-  // the propagate step and so values of interest
-  // are in the scratch-space grid
   #pragma omp parallel for default(none) shared(cells,obstacles) schedule(static) reduction(+:tot_u)
   for (int ii = 0; ii < params.ny; ii++)
   {
@@ -538,49 +491,18 @@ double propagate_collide_2(const t_param params, t_speed *restrict cells, int *r
           cells[ii * params.nx + jj].speeds[kk] = (1.0 - params.omega)*tmp_speeds[kk] + omega_d_equ[kk];
         }
 
-        // ========================
-        // === AVERAGE VELOCITY ===
-        // ========================
-/*
-        // local density total
-        local_density = 0.0;
-        for (int kk = 0; kk < NSPEEDS; kk++)
-        {
-          local_density += cells[ii * params.nx + jj].speeds[kk];
-        }
-
-        // x-component of velocity
-        u_x = (
-                + cells[ii * params.nx + jj].speeds[1]
-                + cells[ii * params.nx + jj].speeds[5]
-                + cells[ii * params.nx + jj].speeds[8]
-                - cells[ii * params.nx + jj].speeds[3]
-                - cells[ii * params.nx + jj].speeds[6]
-                - cells[ii * params.nx + jj].speeds[7]
-              ) / local_density;
-        // compute y velocity component
-        u_y = (
-                + cells[ii * params.nx + jj].speeds[2]
-                + cells[ii * params.nx + jj].speeds[5]
-                + cells[ii * params.nx + jj].speeds[6]
-                - cells[ii * params.nx + jj].speeds[4]
-                - cells[ii * params.nx + jj].speeds[7]
-                - cells[ii * params.nx + jj].speeds[8]
-              ) / local_density;
-*/
         // accumulate the norm of x- and y- velocity components
         tot_u += sqrt((u_x * u_x) + (u_y * u_y));
-        // increase counter of inspected cells
-//        tot_cells++;
       }
     }
   }
 
-  //return EXIT_SUCCESS;
-  return tot_u;// / (double)tot_cells;
+  return tot_u;
 }
 
-// ----------------------------------------------------------------
+// =================================
+// === SEPERATE AVERAGE VELOCITY ===
+// =================================
 
 double av_velocity_1(const t_param params, t_speed *restrict cells, int *restrict obstacles)
 {
@@ -695,6 +617,10 @@ double av_velocity_2(const t_param params, t_speed *restrict cells, int *restric
 
   return tot_u / (double)tot_cells;
 }
+
+// =======================
+// === OTHER FUNCTIONS ===
+// =======================
 
 int initialise(const char* paramfile, const char* obstaclefile,
                t_param* params, t_speed** cells_ptr,
@@ -987,3 +913,9 @@ void usage(const char* exe)
   fprintf(stderr, "Usage: %s <paramfile> <obstaclefile>\n", exe);
   exit(EXIT_FAILURE);
 }
+
+// ==================
+// === ALL IN ONE ===
+// ==================
+
+
