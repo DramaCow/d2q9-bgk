@@ -12,6 +12,8 @@ CC=icc
 #CFLAGS= -std=c99 -Wall -Ofast -DDEBUG -pg -g -fprofile-use
 #CFLAGS= -std=c99 -Wall -Ofast -DDEBUG -pg -g #-fopenmp
 CFLAGS= -std=c99 -Wall -Ofast -g -fopenmp
+#CFLAGS= -std=c99 -Wall -Ofast -fopenmp -prof-gen
+#CFLAGS= -std=c99 -Wall -Ofast -fopenmp -fprof-use
 LIBS = -lm
 
 FINAL_STATE_FILE=./final_state.dat
