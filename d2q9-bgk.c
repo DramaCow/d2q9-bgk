@@ -131,6 +131,7 @@ int main(int argc, char* argv[])
   double tic, toc;              /* floating point numbers to calculate elapsed wallclock time */
   double usrtim;                /* floating point number to record elapsed user CPU time */
   double systim;                /* floating point number to record elapsed system CPU time */
+	double tot_cells = 0.0;       // number of non-obstacle cells
 
   /* parse the command line */
   if (argc != 3)
@@ -146,6 +147,12 @@ int main(int argc, char* argv[])
   /* initialise our data structures and load values from file */
   initialise(paramfile, obstaclefile, &params, &cells, &obstacles, &av_vels);
 
+	for (int ii = 0; ii < params.nx * params.ny; ii++) {
+		if (!obstacles[ii]) {
+			++tot_cells;
+		}
+	}
+
   /* iterate for maxIters timesteps */
   gettimeofday(&timstr, NULL);
   tic = timstr.tv_sec + (timstr.tv_usec / 1000000.0);
@@ -153,7 +160,7 @@ int main(int argc, char* argv[])
   for (int tt = 0; tt < params.maxIters; tt+=2)
   {
     accelerate_flow_1(params, cells, obstacles);
-    av_vels[tt] = propagate_collide_1(params, cells, obstacles);
+    av_vels[tt] = propagate_collide_1(params, cells, obstacles) / tot_cells;
 #ifdef DEBUG
     printf("==timestep: %d==\n", tt);
     printf("av velocity: %.12E\n", av_vels[tt]);
@@ -161,7 +168,7 @@ int main(int argc, char* argv[])
 #endif
 
     accelerate_flow_2(params, cells, obstacles);
-    av_vels[tt+1] = propagate_collide_2(params, cells, obstacles);
+    av_vels[tt+1] = propagate_collide_2(params, cells, obstacles) / tot_cells;
 #ifdef DEBUG
     printf("==timestep: %d==\n", tt+1);
     printf("av velocity: %.12E\n", av_vels[tt+1]);
@@ -232,14 +239,14 @@ double propagate_collide_1(const t_param params, t_speed *restrict cells, int *r
   const double w2 = (1.0 / 36.0)*params.omega; // weighting factor
 
   // average velocity locals  
-  int    tot_cells = 0;  // no. of cells used in calculation
+//  int    tot_cells = 0;  // no. of cells used in calculation
   double tot_u = 0.0;    // accumulated magnitudes of velocity for each cell
 
   // loop over the cells in the grid
   // NB the collision step is called after
   // the propagate step and so values of interest
   // are in the scratch-space grid
-  #pragma omp parallel for default(none) shared(cells,obstacles) schedule(static) reduction(+:tot_cells,tot_u)
+  #pragma omp parallel for default(none) shared(cells,obstacles) schedule(static) reduction(+:tot_u)
   for (int ii = 0; ii < params.ny; ii++)
   {
     for (int jj = 0; jj < params.nx; jj++)
@@ -343,7 +350,8 @@ double propagate_collide_1(const t_param params, t_speed *restrict cells, int *r
         // ========================
         // === AVERAGE VELOCITY ===
         // ========================
-        /* local density total */
+/*
+        // local density total
         local_density = (
                            + cells[ii  * params.nx + jj ].speeds[0] // central cell, no movement
                            + cells[ii  * params.nx + x_w].speeds[1] // west 
@@ -356,7 +364,7 @@ double propagate_collide_1(const t_param params, t_speed *restrict cells, int *r
                            + cells[y_n * params.nx + x_w].speeds[8] // north-west 
                         );
 
-        /* x-component of velocity */
+        // x-component of velocity
         u_x = (
                 + cells[ii  * params.nx + x_e].speeds[3]
                 + cells[y_n * params.nx + x_e].speeds[7]
@@ -365,7 +373,7 @@ double propagate_collide_1(const t_param params, t_speed *restrict cells, int *r
                 - cells[y_n * params.nx + x_w].speeds[8]
                 - cells[y_s * params.nx + x_w].speeds[5]
               ) / local_density;
-        /* compute y velocity component */
+        // compute y velocity component
         u_y = (
                 + cells[y_n * params.nx + jj ].speeds[4]
                 + cells[y_n * params.nx + x_w].speeds[8]
@@ -374,16 +382,17 @@ double propagate_collide_1(const t_param params, t_speed *restrict cells, int *r
                 - cells[y_s * params.nx + x_w].speeds[5]
                 - cells[y_s * params.nx + x_e].speeds[6]
               ) / local_density;
-        /* accumulate the norm of x- and y- velocity components */
+*/
+        // accumulate the norm of x- and y- velocity components
         tot_u += sqrt((u_x * u_x) + (u_y * u_y));
-        /* increase counter of inspected cells */
-        tot_cells++;
+        // increase counter of inspected cells
+//        tot_cells++;
       }
     }
   }
 
   //return EXIT_SUCCESS;
-  return tot_u / (double)tot_cells;
+  return tot_u;// / (double)tot_cells;
 }
 
 // ----------------------------------------------------------------
@@ -434,14 +443,14 @@ double propagate_collide_2(const t_param params, t_speed *restrict cells, int *r
   const double w2 = (1.0 / 36.0)*params.omega; // weighting factor
 
   // average velocity locals  
-  int    tot_cells = 0;  // no. of cells used in calculation
+//  int    tot_cells = 0;  // no. of cells used in calculation
   double tot_u = 0.0;    // accumulated magnitudes of velocity for each cell
 
   // loop over the cells in the grid
   // NB the collision step is called after
   // the propagate step and so values of interest
   // are in the scratch-space grid
-  #pragma omp parallel for default(none) shared(cells,obstacles) schedule(static) reduction(+:tot_cells,tot_u)
+  #pragma omp parallel for default(none) shared(cells,obstacles) schedule(static) reduction(+:tot_u)
   for (int ii = 0; ii < params.ny; ii++)
   {
     for (int jj = 0; jj < params.nx; jj++)
@@ -532,14 +541,15 @@ double propagate_collide_2(const t_param params, t_speed *restrict cells, int *r
         // ========================
         // === AVERAGE VELOCITY ===
         // ========================
-        /* local density total */
+/*
+        // local density total
         local_density = 0.0;
         for (int kk = 0; kk < NSPEEDS; kk++)
         {
           local_density += cells[ii * params.nx + jj].speeds[kk];
         }
 
-        /* x-component of velocity */
+        // x-component of velocity
         u_x = (
                 + cells[ii * params.nx + jj].speeds[1]
                 + cells[ii * params.nx + jj].speeds[5]
@@ -548,7 +558,7 @@ double propagate_collide_2(const t_param params, t_speed *restrict cells, int *r
                 - cells[ii * params.nx + jj].speeds[6]
                 - cells[ii * params.nx + jj].speeds[7]
               ) / local_density;
-        /* compute y velocity component */
+        // compute y velocity component
         u_y = (
                 + cells[ii * params.nx + jj].speeds[2]
                 + cells[ii * params.nx + jj].speeds[5]
@@ -557,16 +567,17 @@ double propagate_collide_2(const t_param params, t_speed *restrict cells, int *r
                 - cells[ii * params.nx + jj].speeds[7]
                 - cells[ii * params.nx + jj].speeds[8]
               ) / local_density;
-        /* accumulate the norm of x- and y- velocity components */
+*/
+        // accumulate the norm of x- and y- velocity components
         tot_u += sqrt((u_x * u_x) + (u_y * u_y));
-        /* increase counter of inspected cells */
-        tot_cells++;
+        // increase counter of inspected cells
+//        tot_cells++;
       }
     }
   }
 
   //return EXIT_SUCCESS;
-  return tot_u / (double)tot_cells;
+  return tot_u;// / (double)tot_cells;
 }
 
 // ----------------------------------------------------------------
