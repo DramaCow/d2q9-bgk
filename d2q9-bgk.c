@@ -932,22 +932,24 @@ int d2q9_bgk(const t_param params, const double tot_cells, t_speed *restrict cel
   // compute weighting factors
   const double w1a = params.density * params.accel / 9.0;
   const double w2a = params.density * params.accel / 36.0;
-
-  //
+  // rows used for accelerating flow
   const int row1 = params.ny - 1;
   const int row2 = params.ny - 2;
   const int row3 = params.ny - 3;
 
-  // collision locals
+  // collision constants
   const double w0 = (4.0 / 9.0 )*params.omega; // weighting factor
   const double w1 = (1.0 / 9.0 )*params.omega; // weighting factor
   const double w2 = (1.0 / 36.0)*params.omega; // weighting factor
 
   // average velocity locals  
-  double tot_u; // accumulated magnitudes of velocity for each cell
+  double tot_u_t1 = 0.0; // accumulated magnitudes of velocity for each cell : t
+  double tot_u_t2 = 0.0; // accumulated magnitudes of velocity for each cell : t+1
 
+  #pragma omp parallel default(none) shared(cells,obstacles) reduction(+:tot_u_t1,tot_u_t2)
 	{
-    #pragma omp parallel for default(none) shared(cells,obstacles) schedule(static)
+    #pragma omp for schedule(static)
+    //#pragma omp single
     for (int jj = 0; jj < params.nx; jj++)
     {
       /* if the cell is not occupied and
@@ -968,12 +970,11 @@ int d2q9_bgk(const t_param params, const double tot_cells, t_speed *restrict cel
       }
     }
 
-    tot_u = 0.0;
     // loop over the cells in the grid
-    #pragma omp parallel for default(none) shared(cells,obstacles) schedule(static) reduction(+:tot_u)
-    for (int ii = 0; ii < params.ny; ii++)
+    #pragma omp for schedule(static)
+    for (int ii = 1; ii < params.ny-1; ii++)
     {
-      for (int jj = 0; jj < params.nx; jj++)
+      for (int jj = 1; jj < params.nx-1; jj++)
       {
         if (!obstacles[ii * params.nx + jj])
         { 
@@ -1072,13 +1073,12 @@ int d2q9_bgk(const t_param params, const double tot_cells, t_speed *restrict cel
           cells[y_n * params.nx + x_w].speeds[8] = (1.0 - params.omega)*tmp_speeds[6] + omega_d_equ[6]; // north-west
 
           // accumulate the norm of x- and y- velocity components
-          tot_u += sqrt((u_x * u_x) + (u_y * u_y));
+          tot_u_t1 += sqrt((u_x * u_x) + (u_y * u_y));
         }
       }
     }
-    av_vels[tt] = tot_u / tot_cells;
 
-    #pragma omp parallel for default(none) shared(cells,obstacles) schedule(static)
+    #pragma omp for schedule(static)
     for (int jj = 0; jj < params.nx; jj++)
     {
       int x_e = (jj + 1) % params.nx;
@@ -1087,27 +1087,26 @@ int d2q9_bgk(const t_param params, const double tot_cells, t_speed *restrict cel
       // if the cell is not occupied and
       // we don't send a negative density
       if (!obstacles[row2 * params.nx + jj]
-          && (cells[row2 * params.nx + x_w].speeds[1] - w1) > 0.0
-          && (cells[row1 * params.nx + x_w].speeds[8] - w2) > 0.0
-          && (cells[row3 * params.nx + x_w].speeds[5] - w2) > 0.0)
+          && (cells[row2 * params.nx + x_w].speeds[1] - w1a) > 0.0
+          && (cells[row1 * params.nx + x_w].speeds[8] - w2a) > 0.0
+          && (cells[row3 * params.nx + x_w].speeds[5] - w2a) > 0.0)
       {
         /* increase 'east-side' densities */
-        cells[row2 * params.nx + x_e].speeds[3] += w1;
-        cells[row1 * params.nx + x_e].speeds[7] += w2;
-        cells[row3 * params.nx + x_e].speeds[6] += w2;
+        cells[row2 * params.nx + x_e].speeds[3] += w1a;
+        cells[row1 * params.nx + x_e].speeds[7] += w2a;
+        cells[row3 * params.nx + x_e].speeds[6] += w2a;
         /* decrease 'west-side' densities */
-        cells[row2 * params.nx + x_w].speeds[1] -= w1;
-        cells[row1 * params.nx + x_w].speeds[8] -= w2;
-        cells[row3 * params.nx + x_w].speeds[5] -= w2;
+        cells[row2 * params.nx + x_w].speeds[1] -= w1a;
+        cells[row1 * params.nx + x_w].speeds[8] -= w2a;
+        cells[row3 * params.nx + x_w].speeds[5] -= w2a;
       }
     }
 
-    tot_u = 0.0; 
     // loop over the cells in the grid
-    #pragma omp parallel for default(none) shared(cells,obstacles) schedule(static) reduction(+:tot_u)
-    for (int ii = 0; ii < params.ny; ii++)
+    #pragma omp for schedule(static)
+    for (int ii = 1; ii < params.ny-1; ii++)
     {
-      for (int jj = 0; jj < params.nx; jj++)
+      for (int jj = 1; jj < params.nx-1; jj++)
       {
         if (!obstacles[ii * params.nx + jj])
         { 
@@ -1193,12 +1192,14 @@ int d2q9_bgk(const t_param params, const double tot_cells, t_speed *restrict cel
           }
 
           // accumulate the norm of x- and y- velocity components
-          tot_u += sqrt((u_x * u_x) + (u_y * u_y));
+          tot_u_t2 += sqrt((u_x * u_x) + (u_y * u_y));
         }
       }
     }
-	  av_vels[tt+1] = tot_u / tot_cells;
 	}
+
+  av_vels[tt]   = tot_u_t1 / tot_cells;
+	av_vels[tt+1] = tot_u_t2 / tot_cells;
 
 	return EXIT_SUCCESS;
 }

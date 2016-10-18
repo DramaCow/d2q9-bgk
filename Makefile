@@ -4,14 +4,10 @@ EXE1=d2q9-bgk.exe
 EXES=$(EXE1)
 
 #CC=tau_cc.sh
-#CC=gcc
+#CFLAGS= -std=c99 -Wall -O3 -funroll-loops -g -fopenmp #-qopt-report
+
 CC=icc
-#CFLAGS= -std=c99 -Wall -Ofast -DDEBUG -pg -g -fassociative-math -freciprocal-math -fno-signed-zeros -fno-trapping-math -frename-registers -funroll-loops -fprofile-generate
-#CFLAGS= -std=c99 -Wall -Ofast -DDEBUG -pg -g -fassociative-math -freciprocal-math -fno-signed-zeros -fno-trapping-math -frename-registers -funroll-loops -fprofile-use
-#CFLAGS= -std=c99 -Wall -Ofast -DDEBUG -pg -g -fprofile-generate
-#CFLAGS= -std=c99 -Wall -Ofast -DDEBUG -pg -g -fprofile-use
-#CFLAGS= -std=c99 -Wall -Ofast -DDEBUG -pg -g #-fopenmp
-CFLAGS= -std=c99 -Wall -Ofast -g -fopenmp
+CFLAGS= -std=c99 -Wall -Ofast -funroll-loops -g -fopenmp #-qopt-report
 #CFLAGS= -std=c99 -Wall -Ofast -fopenmp -prof-gen
 #CFLAGS= -std=c99 -Wall -Ofast -fopenmp -fprof-use
 LIBS = -lm
