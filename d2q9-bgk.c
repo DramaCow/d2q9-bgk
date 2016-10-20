@@ -566,7 +566,7 @@ float av_velocity_1(const t_param params, t_speed *restrict cells, int *restrict
                        - cells[y_s * params.nx + x_e].speeds[6]
                      ) / local_density;
         /* accumulate the norm of x- and y- velocity components */
-        tot_u += sqrt((u_x * u_x) + (u_y * u_y));
+        tot_u += sqrtf((u_x * u_x) + (u_y * u_y));
         /* increase counter of inspected cells */
         tot_cells++;
       }
@@ -617,7 +617,7 @@ float av_velocity_2(const t_param params, t_speed *restrict cells, int *restrict
                        - cells[ii * params.nx + jj].speeds[8]
                      ) / local_density;
         /* accumulate the norm of x- and y- velocity components */
-        tot_u += sqrt((u_x * u_x) + (u_y * u_y));
+        tot_u += sqrtf((u_x * u_x) + (u_y * u_y));
         /* increase counter of inspected cells */
         tot_cells++;
       }
@@ -880,7 +880,7 @@ int write_values(const t_param params, t_speed* cells, int* obstacles, float* av
                   + cells[ii * params.nx + jj].speeds[8]))
               / local_density;
         /* compute norm of velocity */
-        u = sqrt((u_x * u_x) + (u_y * u_y));
+        u = sqrtf((u_x * u_x) + (u_y * u_y));
         /* compute pressure */
         pressure = local_density * c_sq;
       }
