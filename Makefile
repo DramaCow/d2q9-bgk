@@ -7,7 +7,7 @@ EXES=$(EXE1)
 #CFLAGS= -std=c99 -Wall -O3 -funroll-loops -g -fopenmp #-qopt-report
 
 CC=icc
-CFLAGS= -std=c99 -Wall -Ofast -funroll-loops -g -fopenmp #-qopt-report
+CFLAGS= -std=c99 -Wall -Ofast -funroll-loops -g -fopenmp -ipo#-qopt-report
 #CFLAGS= -std=c99 -Wall -Ofast -fopenmp -prof-gen
 #CFLAGS= -std=c99 -Wall -Ofast -fopenmp -fprof-use
 LIBS = -lm
