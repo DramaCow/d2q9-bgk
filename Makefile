@@ -21,8 +21,8 @@ REF_AV_VELS_FILE=check/128x128.av_vels.dat
 REF_FINAL_STATE_FILE_256=check/256x256.final_state.dat
 REF_AV_VELS_FILE_256=check/256x256.av_vels.dat
 
-REF_FINAL_STATE_FILE_EMPTY=check/empty.final_state.dat
-REF_AV_VELS_FILE_EMPTY=check/empty.av_vels.dat
+REF_FINAL_STATE_FILE_EMPTY=check/128x256.final_state.dat
+REF_AV_VELS_FILE_EMPTY=check/128x256.av_vels.dat
 
 all: $(EXES)
 

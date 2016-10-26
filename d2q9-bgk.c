@@ -938,9 +938,9 @@ int d2q9_bgk(const t_param params, const float tot_cells, t_speed *restrict cell
   const int row3 = params.ny - 3;
 
   // collision constants
-  const float w0 = (4.0f / 9.0f )*params.omega; // weighting factor
-  const float w1 = (1.0f / 9.0f )*params.omega; // weighting factor
-  const float w2 = (1.0f / 36.0f)*params.omega; // weighting factor
+  //const float w0 = (4.0f / 9.0f )*params.omega; // weighting factor
+  //const float w1 = (1.0f / 9.0f )*params.omega; // weighting factor
+  //const float w2 = (1.0f / 36.0f)*params.omega; // weighting factor
 
   // average velocity locals  
   float tot_u_t1 = 0.0f; // accumulated magnitudes of velocity for each cell : t
@@ -972,9 +972,9 @@ int d2q9_bgk(const t_param params, const float tot_cells, t_speed *restrict cell
 
     // loop over the cells in the grid
     #pragma omp for schedule(static)
-    for (int ii = 1; ii < params.ny-1; ii++)
+    for (int ii = 0; ii < params.ny; ii++)
     {
-      for (int jj = 1; jj < params.nx-1; jj++)
+      for (int jj = 0; jj < params.nx; jj++)
       {
         if (!obstacles[ii * params.nx + jj])
         { 
@@ -983,8 +983,10 @@ int d2q9_bgk(const t_param params, const float tot_cells, t_speed *restrict cell
           // =================
           // determine indices of axis-direction neighbours
           // respecting periodic boundary conditions (wrap around)
-          int y_n = (ii + 1) % params.ny;
-          int x_e = (jj + 1) % params.nx;
+          //int y_n = (ii + 1) % params.ny;
+          int y_n = (ii == params.ny-1) ? (0) : (ii + 1);
+          //int x_e = (jj + 1) % params.nx;
+          int x_e = (jj == params.nx-1) ? (0) : (jj + 1);
           int y_s = (ii == 0) ? (params.ny - 1) : (ii - 1);
           int x_w = (jj == 0) ? (params.nx - 1) : (jj - 1);
 
@@ -1006,11 +1008,18 @@ int d2q9_bgk(const t_param params, const float tot_cells, t_speed *restrict cell
           // === COLLISION === don't consider occupied cells
           // =================
           // compute local density total
+          /*
           float local_density = 0.0f;
           for (int kk = 0; kk < NSPEEDS; kk++)
           {
             local_density += tmp_speeds[kk];
           }
+					*/
+					float local_density = tmp_speeds[0] + tmp_speeds[1]
+															+ tmp_speeds[2] + tmp_speeds[3]
+															+ tmp_speeds[4] + tmp_speeds[5]
+															+ tmp_speeds[6] + tmp_speeds[7]
+															+ tmp_speeds[8];
 
           // compute x velocity component
           float u_x = ( 
@@ -1020,7 +1029,7 @@ int d2q9_bgk(const t_param params, const float tot_cells, t_speed *restrict cell
                          - tmp_speeds[3]
                          - tmp_speeds[6]
                          - tmp_speeds[7] 
-                       ) / local_density;
+                       ) * (1.0f / local_density);
                        
           // compute y velocity component
           float u_y = ( 
@@ -1030,35 +1039,36 @@ int d2q9_bgk(const t_param params, const float tot_cells, t_speed *restrict cell
                          - tmp_speeds[4]
                          - tmp_speeds[7]
                          - tmp_speeds[8] 
-                       ) / local_density;
+                       ) * (1.0f / local_density);
 
           // velocity squared
-          float u_sq = 1.5f*(u_x * u_x + u_y * u_y);
+          float u_sq = u_x * u_x + u_y * u_y;
 
           // directional velocity components
-          float u1 =   u_x;        // east
-          float u2 =         u_y;  // north
-          float u3 = - u_x;        // west
-          float u4 =       - u_y;  // south
-          float u5 =   u_x + u_y;  // north-east
-          float u6 = - u_x + u_y;  // north-west
-          float u7 = - u_x - u_y;  // south-west
-          float u8 =   u_x - u_y;  // south-east
+          float u[NSPEEDS-1];
+          u[0] =   u_x;        // east
+          u[1] =         u_y;  // north
+          u[2] = - u_x;        // west
+          u[3] =       - u_y;  // south
+          u[4] =   u_x + u_y;  // north-east
+          u[5] = - u_x + u_y;  // north-west
+          u[6] = - u_x - u_y;  // south-west
+          u[7] =   u_x - u_y;  // south-east
 
           // omega * equilibrium densities
           float omega_d_equ[NSPEEDS];
           // zero velocity density: weight w0
-          omega_d_equ[0] = w0 * local_density * (1.0f - u_sq);
+          omega_d_equ[0] = (4.0f/9.0f) * params.omega * local_density * (1.0f - 1.5f*u_sq);
           // axis speeds: weight w1
-          omega_d_equ[1] = w1 * local_density * (1.0f + u1*(3.0f + 4.5f*u1) - u_sq);
-          omega_d_equ[2] = w1 * local_density * (1.0f + u2*(3.0f + 4.5f*u2) - u_sq);
-          omega_d_equ[3] = w1 * local_density * (1.0f + u3*(3.0f + 4.5f*u3) - u_sq);
-          omega_d_equ[4] = w1 * local_density * (1.0f + u4*(3.0f + 4.5f*u4) - u_sq);
+          omega_d_equ[1] = (1.0f/9.0f) * params.omega * local_density * (1.0f + 3.0f*u[0] + 4.5f*u[0]*u[0] - 1.5f*u_sq);
+          omega_d_equ[2] = (1.0f/9.0f) * params.omega * local_density * (1.0f + 3.0f*u[1] + 4.5f*u[1]*u[1] - 1.5f*u_sq);
+          omega_d_equ[3] = (1.0f/9.0f) * params.omega * local_density * (1.0f + 3.0f*u[2] + 4.5f*u[2]*u[2] - 1.5f*u_sq);
+          omega_d_equ[4] = (1.0f/9.0f) * params.omega * local_density * (1.0f + 3.0f*u[3] + 4.5f*u[3]*u[3] - 1.5f*u_sq);
           // diagonal speeds: weight w2
-          omega_d_equ[5] = w2 * local_density * (1.0f + u5*(3.0f + 4.5f*u5) - u_sq);
-          omega_d_equ[6] = w2 * local_density * (1.0f + u6*(3.0f + 4.5f*u6) - u_sq);
-          omega_d_equ[7] = w2 * local_density * (1.0f + u7*(3.0f + 4.5f*u7) - u_sq);
-          omega_d_equ[8] = w2 * local_density * (1.0f + u8*(3.0f + 4.5f*u8) - u_sq);
+          omega_d_equ[5] = (1.0f/36.0f) * params.omega * local_density * (1.0f + 3.0f*u[4] + 4.5f*u[4]*u[4] - 1.5f*u_sq);
+          omega_d_equ[6] = (1.0f/36.0f) * params.omega * local_density * (1.0f + 3.0f*u[5] + 4.5f*u[5]*u[5] - 1.5f*u_sq);
+          omega_d_equ[7] = (1.0f/36.0f) * params.omega * local_density * (1.0f + 3.0f*u[6] + 4.5f*u[6]*u[6] - 1.5f*u_sq);
+          omega_d_equ[8] = (1.0f/36.0f) * params.omega * local_density * (1.0f + 3.0f*u[7] + 4.5f*u[7]*u[7] - 1.5f*u_sq);
 
           // relaxation step
           // store cells speeds in adjacent cells
@@ -1073,7 +1083,7 @@ int d2q9_bgk(const t_param params, const float tot_cells, t_speed *restrict cell
           cells[y_n * params.nx + x_w].speeds[8] = (1.0f - params.omega)*tmp_speeds[6] + omega_d_equ[6]; // north-west
 
           // accumulate the norm of x- and y- velocity components
-          tot_u_t1 += sqrtf((u_x * u_x) + (u_y * u_y));
+          tot_u_t1 += sqrtf(u_x * u_x + u_y * u_y);
         }
       }
     }
@@ -1081,7 +1091,8 @@ int d2q9_bgk(const t_param params, const float tot_cells, t_speed *restrict cell
     #pragma omp for schedule(static)
     for (int jj = 0; jj < params.nx; jj++)
     {
-      int x_e = (jj + 1) % params.nx;
+      //int x_e = (jj + 1) % params.nx;
+      int x_e = (jj == params.nx-1) ? (0) : (jj + 1);
       int x_w = (jj == 0) ? (params.nx - 1) : (jj - 1);
 
       // if the cell is not occupied and
@@ -1104,9 +1115,9 @@ int d2q9_bgk(const t_param params, const float tot_cells, t_speed *restrict cell
 
     // loop over the cells in the grid
     #pragma omp for schedule(static)
-    for (int ii = 1; ii < params.ny-1; ii++)
+    for (int ii = 0; ii < params.ny; ii++)
     {
-      for (int jj = 1; jj < params.nx-1; jj++)
+      for (int jj = 0; jj < params.nx; jj++)
       {
         if (!obstacles[ii * params.nx + jj])
         { 
@@ -1157,7 +1168,7 @@ int d2q9_bgk(const t_param params, const float tot_cells, t_speed *restrict cell
                        ) / local_density;
 
           // velocity squared
-          float u_sq = 1.5f*(u_x * u_x + u_y * u_y);
+          float u_sq = u_x * u_x + u_y * u_y;
 
           // directional velocity components
           float u1 =   u_x;        // east
@@ -1172,17 +1183,17 @@ int d2q9_bgk(const t_param params, const float tot_cells, t_speed *restrict cell
           // omega * equilibrium densities
           float omega_d_equ[NSPEEDS];
           // zero velocity density: weight w0
-          omega_d_equ[0] = w0 * local_density * (1.0f - u_sq);
+          omega_d_equ[0] = (4.0f/9.0f) * params.omega * local_density * (1.0f - 1.5f*u_sq);
           // axis speeds: weight w1
-          omega_d_equ[1] = w1 * local_density * (1.0f + u1*(3.0f + 4.5f*u1) - u_sq);
-          omega_d_equ[2] = w1 * local_density * (1.0f + u2*(3.0f + 4.5f*u2) - u_sq);
-          omega_d_equ[3] = w1 * local_density * (1.0f + u3*(3.0f + 4.5f*u3) - u_sq);
-          omega_d_equ[4] = w1 * local_density * (1.0f + u4*(3.0f + 4.5f*u4) - u_sq);
+          omega_d_equ[1] = (1.0f/9.0f) * params.omega * local_density * (1.0f + 3.0f*u1 + 4.5f*u1*u1 - 1.5f*u_sq);
+          omega_d_equ[2] = (1.0f/9.0f) * params.omega * local_density * (1.0f + 3.0f*u2 + 4.5f*u2*u2 - 1.5f*u_sq);
+          omega_d_equ[3] = (1.0f/9.0f) * params.omega * local_density * (1.0f + 3.0f*u3 + 4.5f*u3*u3 - 1.5f*u_sq);
+          omega_d_equ[4] = (1.0f/9.0f) * params.omega * local_density * (1.0f + 3.0f*u4 + 4.5f*u4*u4 - 1.5f*u_sq);
           // diagonal speeds: weight w2
-          omega_d_equ[5] = w2 * local_density * (1.0f + u5*(3.0f + 4.5f*u5) - u_sq);
-          omega_d_equ[6] = w2 * local_density * (1.0f + u6*(3.0f + 4.5f*u6) - u_sq);
-          omega_d_equ[7] = w2 * local_density * (1.0f + u7*(3.0f + 4.5f*u7) - u_sq);
-          omega_d_equ[8] = w2 * local_density * (1.0f + u8*(3.0f + 4.5f*u8) - u_sq);
+          omega_d_equ[5] = (1.0f/36.0f) * params.omega * local_density * (1.0f + 3.0f*u5 + 4.5f*u5*u5 - 1.5f*u_sq);
+          omega_d_equ[6] = (1.0f/36.0f) * params.omega * local_density * (1.0f + 3.0f*u6 + 4.5f*u6*u6 - 1.5f*u_sq);
+          omega_d_equ[7] = (1.0f/36.0f) * params.omega * local_density * (1.0f + 3.0f*u7 + 4.5f*u7*u7 - 1.5f*u_sq);
+          omega_d_equ[8] = (1.0f/36.0f) * params.omega * local_density * (1.0f + 3.0f*u8 + 4.5f*u8*u8 - 1.5f*u_sq);
 
           // relaxation step
           // store cells speeds in current cell only
@@ -1192,7 +1203,7 @@ int d2q9_bgk(const t_param params, const float tot_cells, t_speed *restrict cell
           }
 
           // accumulate the norm of x- and y- velocity components
-          tot_u_t2 += sqrtf((u_x * u_x) + (u_y * u_y));
+          tot_u_t2 += sqrtf(u_x * u_x + u_y * u_y);
         }
       }
     }
