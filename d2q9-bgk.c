@@ -938,9 +938,6 @@ int d2q9_bgk(const t_param params, const float tot_cells, t_speed *restrict cell
   const int row3 = params.ny - 3;
 
   // collision constants
-  //const float w0 = (4.0f / 9.0f )*params.omega; // weighting factor
-  //const float w1 = (1.0f / 9.0f )*params.omega; // weighting factor
-  //const float w2 = (1.0f / 36.0f)*params.omega; // weighting factor
 	const float w[NSPEEDS] = { 4.0f / 9.0f , 
                              1.0f / 9.0f , 
                              1.0f / 9.0f , 
@@ -949,19 +946,17 @@ int d2q9_bgk(const t_param params, const float tot_cells, t_speed *restrict cell
                              1.0f / 36.0f, 
                              1.0f / 36.0f, 
                              1.0f / 36.0f, 
-                             1.0f / 36.0f  };
+                             1.0f / 36.0f};
 
-  const int u[NSPEEDS][2] = {
-					{  0,  0 },
-          {  1,  0 },
-          {  0,  1 },
-          { -1,  0 },
-          {  0, -1 },
-          {  1,  1 },
-          { -1,  1 },
-          { -1, -1 },
-          {  1, -1 }
-	};
+  const int u[NSPEEDS][2] = {{  0,  0 },
+                             {  1,  0 },
+                             {  0,  1 },
+                             { -1,  0 },
+                             {  0, -1 },
+                             {  1,  1 },
+                             { -1,  1 },
+                             { -1, -1 },
+                             {  1, -1 }};
 
   // average velocity locals  
   float tot_u_t1 = 0.0f; // accumulated magnitudes of velocity for each cell : t
@@ -1004,9 +999,7 @@ int d2q9_bgk(const t_param params, const float tot_cells, t_speed *restrict cell
           // =================
           // determine indices of axis-direction neighbours
           // respecting periodic boundary conditions (wrap around)
-          //int y_n = (ii + 1) % params.ny;
           int y_n = (ii == params.ny-1) ? (0) : (ii + 1);
-          //int x_e = (jj + 1) % params.nx;
           int x_e = (jj == params.nx-1) ? (0) : (jj + 1);
           int y_s = (ii == 0) ? (params.ny - 1) : (ii - 1);
           int x_w = (jj == 0) ? (params.nx - 1) : (jj - 1);
@@ -1043,6 +1036,7 @@ int d2q9_bgk(const t_param params, const float tot_cells, t_speed *restrict cell
                          - tmp_speeds[3]
                          - tmp_speeds[6]
                          - tmp_speeds[7] 
+											 //) / local_density;
                        ) * (1.0f / local_density);
                        
           // compute y velocity component
@@ -1053,12 +1047,13 @@ int d2q9_bgk(const t_param params, const float tot_cells, t_speed *restrict cell
                          - tmp_speeds[4]
                          - tmp_speeds[7]
                          - tmp_speeds[8] 
+                       //) / local_density;
                        ) * (1.0f / local_density);
 
           // velocity squared
           float u_sq = u_x * u_x + u_y * u_y;
 			
-          // omega * equilibrium densities
+          // equilibrium densities
           float omega_d_equ[NSPEEDS];
 				  for (int kk = 0; kk < NSPEEDS; kk++) {
             // directional velocity components
@@ -1068,15 +1063,19 @@ int d2q9_bgk(const t_param params, const float tot_cells, t_speed *restrict cell
 
           // relaxation step
           // store cells speeds in adjacent cells
-          cells[ii  * params.nx + jj ].speeds[0] = (1.0f - params.omega)*tmp_speeds[0] + omega_d_equ[0]; // central cell, no movement
-          cells[ii  * params.nx + x_w].speeds[1] = (1.0f - params.omega)*tmp_speeds[3] + omega_d_equ[3]; // west
-          cells[y_s * params.nx + jj ].speeds[2] = (1.0f - params.omega)*tmp_speeds[4] + omega_d_equ[4]; // south
-          cells[ii  * params.nx + x_e].speeds[3] = (1.0f - params.omega)*tmp_speeds[1] + omega_d_equ[1]; // east
-          cells[y_n * params.nx + jj ].speeds[4] = (1.0f - params.omega)*tmp_speeds[2] + omega_d_equ[2]; // north
-          cells[y_s * params.nx + x_w].speeds[5] = (1.0f - params.omega)*tmp_speeds[7] + omega_d_equ[7]; // south-west
-          cells[y_s * params.nx + x_e].speeds[6] = (1.0f - params.omega)*tmp_speeds[8] + omega_d_equ[8]; // south-east 
-          cells[y_n * params.nx + x_e].speeds[7] = (1.0f - params.omega)*tmp_speeds[5] + omega_d_equ[5]; // north-east
-          cells[y_n * params.nx + x_w].speeds[8] = (1.0f - params.omega)*tmp_speeds[6] + omega_d_equ[6]; // north-west
+				  for (int kk = 0; kk < NSPEEDS; kk++) {
+						tmp_speeds[kk] *= (1.0f - params.omega);
+            tmp_speeds[kk] += omega_d_equ[kk];
+					}
+          cells[ii  * params.nx + jj ].speeds[0] = tmp_speeds[0]; // central cell, no movement
+          cells[ii  * params.nx + x_w].speeds[1] = tmp_speeds[3]; // west
+          cells[y_s * params.nx + jj ].speeds[2] = tmp_speeds[4]; // south
+          cells[ii  * params.nx + x_e].speeds[3] = tmp_speeds[1]; // east
+          cells[y_n * params.nx + jj ].speeds[4] = tmp_speeds[2]; // north
+          cells[y_s * params.nx + x_w].speeds[5] = tmp_speeds[7]; // south-west
+          cells[y_s * params.nx + x_e].speeds[6] = tmp_speeds[8]; // south-east
+          cells[y_n * params.nx + x_e].speeds[7] = tmp_speeds[5]; // north-east
+          cells[y_n * params.nx + x_w].speeds[8] = tmp_speeds[6]; // north-west
 
           // accumulate the norm of x- and y- velocity components
           tot_u_t1 += sqrtf(u_x * u_x + u_y * u_y);
@@ -1151,7 +1150,8 @@ int d2q9_bgk(const t_param params, const float tot_cells, t_speed *restrict cell
                          - tmp_speeds[3]
                          - tmp_speeds[6]
                          - tmp_speeds[7] 
-                       ) / local_density;
+                       //) / local_density;
+                       ) * (1.0f / local_density);
                        
           // compute y velocity component
           float u_y = ( 
@@ -1161,24 +1161,25 @@ int d2q9_bgk(const t_param params, const float tot_cells, t_speed *restrict cell
                          - tmp_speeds[4]
                          - tmp_speeds[7]
                          - tmp_speeds[8] 
-                       ) / local_density;
+                       //) / local_density;
+                       ) * (1.0f / local_density);
 
           // velocity squared
           float u_sq = u_x * u_x + u_y * u_y;
 
-          // omega * equilibrium densities
-          float omega_d_equ[NSPEEDS];
+          // equilibrium densities
+          float d_equ[NSPEEDS];
 				  for (int kk = 0; kk < NSPEEDS; kk++) {
-          // directional velocity components
+          	// directional velocity components
 						float u_kk = u[kk][0]*u_x + u[kk][1]*u_y;
-          	omega_d_equ[kk] = w[kk] * params.omega * local_density * (1.0f + 3.0f*u_kk + 4.5f*u_kk*u_kk - 1.5f*u_sq);
+          	d_equ[kk] = w[kk] * params.omega * local_density * (1.0f + 3.0f*u_kk + 4.5f*u_kk*u_kk - 1.5f*u_sq);
 					}
 
           // relaxation step
           // store cells speeds in current cell only
           for (int kk = 0; kk < NSPEEDS; kk++)
           {
-            cells[ii * params.nx + jj].speeds[kk] = (1.0f - params.omega)*tmp_speeds[kk] + omega_d_equ[kk];
+            cells[ii * params.nx + jj].speeds[kk] = (1.0f - params.omega)*tmp_speeds[kk] + d_equ[kk];
           }
 
           // accumulate the norm of x- and y- velocity components
