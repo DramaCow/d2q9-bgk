@@ -951,11 +951,23 @@ int d2q9_bgk(const t_param params, const float tot_cells, t_speed *restrict cell
                              1.0f / 36.0f, 
                              1.0f / 36.0f  };
 
+  const int u[NSPEEDS][2] = {
+					{  0,  0 },
+          {  1,  0 },
+          {  0,  1 },
+          { -1,  0 },
+          {  0, -1 },
+          {  1,  1 },
+          { -1,  1 },
+          { -1, -1 },
+          {  1, -1 }
+	};
+
   // average velocity locals  
   float tot_u_t1 = 0.0f; // accumulated magnitudes of velocity for each cell : t
   float tot_u_t2 = 0.0f; // accumulated magnitudes of velocity for each cell : t+1
 
-  #pragma omp parallel default(none) shared(cells,obstacles) reduction(+:tot_u_t1,tot_u_t2) firstprivate(w)
+  #pragma omp parallel default(none) shared(cells,obstacles) reduction(+:tot_u_t1,tot_u_t2) firstprivate(w,u)
 	{
     #pragma omp for schedule(static)
     //#pragma omp single
@@ -1045,23 +1057,13 @@ int d2q9_bgk(const t_param params, const float tot_cells, t_speed *restrict cell
 
           // velocity squared
           float u_sq = u_x * u_x + u_y * u_y;
-
-          // directional velocity components
-          float u[NSPEEDS];
-					u[0] =   0;
-          u[1] =   u_x;        // east
-          u[2] =         u_y;  // north
-          u[3] = - u_x;        // west
-          u[4] =       - u_y;  // south
-          u[5] =   u_x + u_y;  // north-east
-          u[6] = - u_x + u_y;  // north-west
-          u[7] = - u_x - u_y;  // south-west
-          u[8] =   u_x - u_y;  // south-east
 			
           // omega * equilibrium densities
           float omega_d_equ[NSPEEDS];
 				  for (int kk = 0; kk < NSPEEDS; kk++) {
-          	omega_d_equ[kk] = w[kk] * params.omega * local_density * (1.0f + 3.0f*u[kk] + 4.5f*u[kk]*u[kk] - 1.5f*u_sq);
+            // directional velocity components
+						float u_kk = u[kk][0]*u_x + u[kk][1]*u_y;
+          	omega_d_equ[kk] = w[kk] * params.omega * local_density * (1.0f + 3.0f*u_kk + 4.5f*u_kk*u_kk - 1.5f*u_sq);
 					}
 
           // relaxation step
@@ -1164,22 +1166,12 @@ int d2q9_bgk(const t_param params, const float tot_cells, t_speed *restrict cell
           // velocity squared
           float u_sq = u_x * u_x + u_y * u_y;
 
-          // directional velocity components
-          float u[NSPEEDS];
-          u[0] =   0;
-          u[1] =   u_x;        // east
-          u[2] =         u_y;  // north
-          u[3] = - u_x;        // west
-          u[4] =       - u_y;  // south
-          u[5] =   u_x + u_y;  // north-east
-          u[6] = - u_x + u_y;  // north-west
-          u[7] = - u_x - u_y;  // south-west
-          u[8] =   u_x - u_y;  // south-east
-
           // omega * equilibrium densities
           float omega_d_equ[NSPEEDS];
 				  for (int kk = 0; kk < NSPEEDS; kk++) {
-          	omega_d_equ[kk] = w[kk] * params.omega * local_density * (1.0f + 3.0f*u[kk] + 4.5f*u[kk]*u[kk] - 1.5f*u_sq);
+          // directional velocity components
+						float u_kk = u[kk][0]*u_x + u[kk][1]*u_y;
+          	omega_d_equ[kk] = w[kk] * params.omega * local_density * (1.0f + 3.0f*u_kk + 4.5f*u_kk*u_kk - 1.5f*u_sq);
 					}
 
           // relaxation step
