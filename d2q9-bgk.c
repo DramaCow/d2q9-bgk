@@ -163,7 +163,6 @@ int main(int argc, char* argv[])
 #ifdef DEBUG
     printf("==timestep: %d==\n", tt);
     printf("av velocity: %.12E\n", av_vels[tt]);
-    printf("tot density: %.12E\n", total_density(params, cells));
 
     printf("==timestep: %d==\n", tt+1);
     printf("av velocity: %.12E\n", av_vels[tt+1]);
