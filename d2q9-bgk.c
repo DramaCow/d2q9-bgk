@@ -134,7 +134,7 @@ int main(int argc, char* argv[])
   double tic, toc;              /* doubleing point numbers to calculate elapsed wallclock time */
   double usrtim;                /* doubleing point number to record elapsed user CPU time */
   double systim;                /* doubleing point number to record elapsed system CPU time */
-	double tot_cells = 0.0;       // number of non-obstacle cells
+	float tot_cells = 0.0f;       // number of non-obstacle cells
 
   /* parse the command line */
   if (argc != 3)
@@ -516,7 +516,7 @@ float propagate_collide_2(const t_param params, t_speed *restrict cells, int *re
 float av_velocity_1(const t_param params, t_speed *restrict cells, int *restrict obstacles)
 {
   int    tot_cells = 0;  // no. of cells used in calculation
-  float tot_u = 0.0;    // accumulated magnitudes of velocity for each cell
+  float tot_u = 0.0f;    // accumulated magnitudes of velocity for each cell
 
   /* loop over all non-blocked cells */
   //#pragma omp parallel for default(none) shared(cells,obstacles) schedule(static) reduction(+:tot_cells,tot_u)
@@ -579,7 +579,7 @@ float av_velocity_1(const t_param params, t_speed *restrict cells, int *restrict
 float av_velocity_2(const t_param params, t_speed *restrict cells, int *restrict obstacles)
 {
   int    tot_cells = 0;  // no. of cells used in calculation
-  float tot_u = 0.0;    // accumulated magnitudes of velocity for each cell
+  float tot_u = 0.0f;    // accumulated magnitudes of velocity for each cell
 
   /* loop over all non-blocked cells */
   //#pragma omp parallel for default(none) shared(cells,obstacles) schedule(static) reduction(+:tot_cells,tot_u)
@@ -591,7 +591,7 @@ float av_velocity_2(const t_param params, t_speed *restrict cells, int *restrict
       if (!obstacles[ii * params.nx + jj])
       {
         /* local density total */
-        float local_density = 0.0;
+        float local_density = 0.0f;
 
         for (int kk = 0; kk < NSPEEDS; kk++)
         {
@@ -712,9 +712,9 @@ int initialise(const char* paramfile, const char* obstaclefile,
   if (*obstacles_ptr == NULL) die("cannot allocate column memory for obstacles", __LINE__, __FILE__);
 
   /* initialise densities */
-  float w0 = params->density * 4.0 / 9.0;
-  float w1 = params->density      / 9.0;
-  float w2 = params->density      / 36.0;
+  float w0 = params->density * 4.0f / 9.0f;
+  float w1 = params->density      / 9.0f;
+  float w2 = params->density      / 36.0f;
 
   for (int ii = 0; ii < params->ny; ii++)
   {
@@ -802,14 +802,14 @@ int finalise(const t_param* params, t_speed** cells_ptr,
 
 float calc_reynolds(const t_param params, t_speed* cells, int* obstacles)
 {
-  const float viscosity = 1.0 / 6.0 * (2.0 / params.omega - 1.0);
+  const float viscosity = 1.0f / 6.0f * (2.0f / params.omega - 1.0f);
 
   return av_velocity_2(params, cells, obstacles) * params.reynolds_dim / viscosity;
 }
 
 float total_density(const t_param params, t_speed* cells)
 {
-  float total = 0.0; // accumulator
+  float total = 0.0f; // accumulator
 
   //#pragma omp parallel for default(none) shared(cells) schedule(static) reduction(+:total)
   for (int ii = 0; ii < params.ny; ii++)
@@ -828,13 +828,13 @@ float total_density(const t_param params, t_speed* cells)
 
 int write_values(const t_param params, t_speed* cells, int* obstacles, float* av_vels)
 {
-  FILE* fp;                     /* file pointer */
-  const float c_sq = 1.0 / 3.0; /* sq. of speed of sound */
-  float local_density;         /* per grid cell sum of densities */
-  float pressure;              /* fluid pressure in grid cell */
-  float u_x;                   /* x-component of velocity in grid cell */
-  float u_y;                   /* y-component of velocity in grid cell */
-  float u;                     /* norm--root of summed squares--of u_x and u_y */
+  FILE* fp;                       /* file pointer */
+  const float c_sq = 1.0f / 3.0f; /* sq. of speed of sound */
+  float local_density;            /* per grid cell sum of densities */
+  float pressure;                 /* fluid pressure in grid cell */
+  float u_x;                      /* x-component of velocity in grid cell */
+  float u_y;                      /* y-component of velocity in grid cell */
+  float u;                        /* norm--root of summed squares--of u_x and u_y */
 
   fp = fopen(FINALSTATEFILE, "w");
 
@@ -850,13 +850,13 @@ int write_values(const t_param params, t_speed* cells, int* obstacles, float* av
       /* an occupied cell */
       if (obstacles[ii * params.nx + jj])
       {
-        u_x = u_y = u = 0.0;
+        u_x = u_y = u = 0.0f;
         pressure = params.density * c_sq;
       }
       /* no obstacle */
       else
       {
-        local_density = 0.0;
+        local_density = 0.0f;
 
         for (int kk = 0; kk < NSPEEDS; kk++)
         {
@@ -938,25 +938,12 @@ int d2q9_bgk(const t_param params, const float tot_cells, t_speed *restrict cell
   const int row3 = params.ny - 3;
 
   // collision constants
-	const float w[NSPEEDS] = { 4.0f / 9.0f , 
-                             1.0f / 9.0f , 
-                             1.0f / 9.0f , 
-                             1.0f / 9.0f , 
-                             1.0f / 9.0f , 
-                             1.0f / 36.0f, 
-                             1.0f / 36.0f, 
-                             1.0f / 36.0f, 
-                             1.0f / 36.0f};
-
-  const int u[NSPEEDS][2] = {{  0,  0 },
-                             {  1,  0 },
-                             {  0,  1 },
-                             { -1,  0 },
-                             {  0, -1 },
-                             {  1,  1 },
-                             { -1,  1 },
-                             { -1, -1 },
-                             {  1, -1 }};
+	const float w[NSPEEDS] = { 4.0f / 9.0f, 
+                             1.0f / 9.0f, 1.0f / 9.0f, 1.0f / 9.0f, 1.0f / 9.0f, 
+                             1.0f / 36.0f, 1.0f / 36.0f, 1.0f / 36.0f, 1.0f / 36.0f };
+  const int u[NSPEEDS][2] = { {  0,  0 }, {  1,  0 }, {  0,  1 },
+                              { -1,  0 }, {  0, -1 }, {  1,  1 },
+                              { -1,  1 }, { -1, -1 }, {  1, -1 } };
 
   // average velocity locals  
   float tot_u_t1 = 0.0f; // accumulated magnitudes of velocity for each cell : t
@@ -999,8 +986,8 @@ int d2q9_bgk(const t_param params, const float tot_cells, t_speed *restrict cell
           // =================
           // determine indices of axis-direction neighbours
           // respecting periodic boundary conditions (wrap around)
-          int y_n = (ii == params.ny-1) ? (0) : (ii + 1);
-          int x_e = (jj == params.nx-1) ? (0) : (jj + 1);
+          int y_n = (ii == params.ny - 1) ? (0) : (ii + 1);
+          int x_e = (jj == params.nx - 1) ? (0) : (jj + 1);
           int y_s = (ii == 0) ? (params.ny - 1) : (ii - 1);
           int x_w = (jj == 0) ? (params.nx - 1) : (jj - 1);
 
@@ -1087,7 +1074,7 @@ int d2q9_bgk(const t_param params, const float tot_cells, t_speed *restrict cell
     for (int jj = 0; jj < params.nx; jj++)
     {
       //int x_e = (jj + 1) % params.nx;
-      int x_e = (jj == params.nx-1) ? (0) : (jj + 1);
+      int x_e = (jj == params.nx - 1) ? (0) : (jj + 1);
       int x_w = (jj == 0) ? (params.nx - 1) : (jj - 1);
 
       // if the cell is not occupied and
