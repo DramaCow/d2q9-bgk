@@ -100,3 +100,9 @@ Elapsed time:           855.444999 (s)
 Elapsed user CPU time:      853.444256 (s)
 Elapsed system CPU time:    0.002999 (s)
 ```
+
+# Visualisation
+
+You can view the final state of the simulation by creating a .png image file using a provided Gnuplot script:
+
+    $ gnuplot final_state.plt
