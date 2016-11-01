@@ -569,7 +569,7 @@ int d2q9_bgk(const t_param params, const float tot_cells, t_speed *restrict cell
   #pragma omp parallel default(none) shared(cells,obstacles) reduction(+:tot_u_t1,tot_u_t2) firstprivate(w,u)
   {
     #pragma omp for schedule(static)
-    for (int jj = 0; jj < params.nx; jj++)
+    for (int jj = 0; jj < params.nx; ++jj)
     {
       /* if the cell is not occupied and
       ** we don't send a negative density */
@@ -591,9 +591,9 @@ int d2q9_bgk(const t_param params, const float tot_cells, t_speed *restrict cell
 
     // loop over the cells in the grid
     #pragma omp for schedule(static)
-    for (int ii = 0; ii < params.ny; ii++)
+    for (int ii = 0; ii < params.ny; ++ii)
     {
-      for (int jj = 0; jj < params.nx; jj++)
+      for (int jj = 0; jj < params.nx; ++jj)
       {
         if (!obstacles[ii * params.nx + jj])
         { 
@@ -626,7 +626,7 @@ int d2q9_bgk(const t_param params, const float tot_cells, t_speed *restrict cell
           // =================
           // compute local density total
           float local_density = 0.0f;
-          for (int kk = 0; kk < NSPEEDS; kk++)
+          for (int kk = 0; kk < NSPEEDS; ++kk)
           {
             local_density += tmp_speeds[kk];
           }
@@ -656,7 +656,7 @@ int d2q9_bgk(const t_param params, const float tot_cells, t_speed *restrict cell
       
           // equilibrium densities
           float omega_d_equ[NSPEEDS];
-          for (int kk = 0; kk < NSPEEDS; kk++) {
+          for (int kk = 0; kk < NSPEEDS; ++kk) {
             // directional velocity components
             float u_kk = u[kk][0]*u_x + u[kk][1]*u_y;
             omega_d_equ[kk] = w[kk] * params.omega * local_density * (1.0f + 3.0f*u_kk + 4.5f*u_kk*u_kk - 1.5f*u_sq);
@@ -664,7 +664,7 @@ int d2q9_bgk(const t_param params, const float tot_cells, t_speed *restrict cell
 
           // relaxation step
           // store cells speeds in adjacent cells
-          for (int kk = 0; kk < NSPEEDS; kk++) {
+          for (int kk = 0; kk < NSPEEDS; ++kk) {
             tmp_speeds[kk] *= (1.0f - params.omega);
             tmp_speeds[kk] += omega_d_equ[kk];
           }
@@ -685,7 +685,7 @@ int d2q9_bgk(const t_param params, const float tot_cells, t_speed *restrict cell
     }
 
     #pragma omp for schedule(static)
-    for (int jj = 0; jj < params.nx; jj++)
+    for (int jj = 0; jj < params.nx; ++jj)
     {
       int x_e = (jj == params.nx - 1) ? (0) : (jj + 1);
       int x_w = (jj == 0) ? (params.nx - 1) : (jj - 1);
@@ -710,9 +710,9 @@ int d2q9_bgk(const t_param params, const float tot_cells, t_speed *restrict cell
 
     // loop over the cells in the grid
     #pragma omp for schedule(static)
-    for (int ii = 0; ii < params.ny; ii++)
+    for (int ii = 0; ii < params.ny; ++ii)
     {
-      for (int jj = 0; jj < params.nx; jj++)
+      for (int jj = 0; jj < params.nx; ++jj)
       {
         if (!obstacles[ii * params.nx + jj])
         { 
@@ -737,7 +737,7 @@ int d2q9_bgk(const t_param params, const float tot_cells, t_speed *restrict cell
           // =================
           // compute local density total
           float local_density = 0.0f;
-          for (int kk = 0; kk < NSPEEDS; kk++)
+          for (int kk = 0; kk < NSPEEDS; ++kk)
           {
             local_density += tmp_speeds[kk];
           }
@@ -767,7 +767,7 @@ int d2q9_bgk(const t_param params, const float tot_cells, t_speed *restrict cell
 
           // equilibrium densities
           float d_equ[NSPEEDS];
-          for (int kk = 0; kk < NSPEEDS; kk++) {
+          for (int kk = 0; kk < NSPEEDS; ++kk) {
             // directional velocity components
             float u_kk = u[kk][0]*u_x + u[kk][1]*u_y;
             d_equ[kk] = w[kk] * params.omega * local_density * (1.0f + 3.0f*u_kk + 4.5f*u_kk*u_kk - 1.5f*u_sq);
@@ -775,7 +775,7 @@ int d2q9_bgk(const t_param params, const float tot_cells, t_speed *restrict cell
 
           // relaxation step
           // store cells speeds in current cell only
-          for (int kk = 0; kk < NSPEEDS; kk++)
+          for (int kk = 0; kk < NSPEEDS; ++kk)
           {
             cells[ii * params.nx + jj].speeds[kk] = (1.0f - params.omega)*tmp_speeds[kk] + d_equ[kk];
           }

@@ -1,0 +1,333 @@
+Intel(R) Advisor can now assist with vectorization and show optimization
+  report messages with your source code.
+See "https://software.intel.com/en-us/intel-advisor-xe" for details.
+
+    Report from: Interprocedural optimizations [ipo]
+
+INLINING OPTION VALUES:
+  -inline-factor: 100
+  -inline-min-size: 30
+  -inline-max-size: 230
+  -inline-max-total-size: 2000
+  -inline-max-per-routine: disabled
+  -inline-max-per-compile: disabled
+
+
+Begin optimization report for: main(int, char **)
+
+    Report from: Interprocedural optimizations [ipo]
+
+INLINE REPORT: (main(int, char **)) [1] d2q9-bgk.c(118,1)
+  -> INLINE: (135,5) usage(const char *)
+  -> (144,3) initialise(const char *, const char *, t_param *, t_speed **, int **, float **)
+  -> (162,5) d2q9_bgk(const t_param, const float, t_speed *__restrict__, int *__restrict__, float *, int)
+  -> (183,41) calc_reynolds(const t_param, t_speed *, int *)
+  -> (187,3) write_values(const t_param, t_speed *, int *, float *)
+  -> INLINE: (188,3) finalise(const t_param *, t_speed **, int **, float **)
+
+
+    Report from: Loop nest, Vector & Auto-parallelization optimizations [loop, vec, par]
+
+
+LOOP BEGIN at d2q9-bgk.c(145,3)
+<Peeled loop for vectorization>
+LOOP END
+
+LOOP BEGIN at d2q9-bgk.c(145,3)
+   remark #15300: LOOP WAS VECTORIZED
+LOOP END
+
+LOOP BEGIN at d2q9-bgk.c(145,3)
+<Remainder loop for vectorization>
+   remark #15301: REMAINDER LOOP WAS VECTORIZED
+LOOP END
+
+LOOP BEGIN at d2q9-bgk.c(145,3)
+<Remainder loop for vectorization>
+LOOP END
+
+LOOP BEGIN at d2q9-bgk.c(161,3)
+   remark #15344: loop was not vectorized: vector dependence prevents vectorization. First dependence is shown below. Use level 5 report for details
+LOOP END
+
+    Report from: Code generation optimizations [cg]
+
+d2q9-bgk.c(162,5):remark #34000: call to memcpy implemented inline with loads and stores with proven source (alignment, offset): (16, 0), and destination (alignment, offset): (1, 0)
+d2q9-bgk.c(183,41):remark #34000: call to memcpy implemented inline with loads and stores with proven source (alignment, offset): (16, 0), and destination (alignment, offset): (1, 0)
+d2q9-bgk.c(187,3):remark #34000: call to memcpy implemented inline with loads and stores with proven source (alignment, offset): (16, 0), and destination (alignment, offset): (1, 0)
+===========================================================================
+
+Begin optimization report for: d2q9_bgk(const t_param, const float, t_speed *__restrict__, int *__restrict__, float *, int)
+
+    Report from: Interprocedural optimizations [ipo]
+
+INLINE REPORT: (d2q9_bgk(const t_param, const float, t_speed *__restrict__, int *__restrict__, float *, int)) [2] d2q9-bgk.c(548,1)
+
+
+    Report from: OpenMP optimizations [openmp]
+
+d2q9-bgk.c(569:3-569:3):OMP:d2q9_bgk:  OpenMP DEFINED REGION WAS PARALLELIZED
+
+    Report from: Loop nest, Vector & Auto-parallelization optimizations [loop, vec, par]
+
+
+LOOP BEGIN at d2q9-bgk.c(572,5)
+   remark #15335: loop was not vectorized: vectorization possible but seems inefficient. Use vector always directive or -vec-threshold0 to override 
+LOOP END
+
+LOOP BEGIN at d2q9-bgk.c(594,5)
+   remark #15542: loop was not vectorized: inner loop was already vectorized
+
+   LOOP BEGIN at d2q9-bgk.c(596,7)
+      remark #15542: loop was not vectorized: inner loop was already vectorized
+
+      LOOP BEGIN at d2q9-bgk.c(630,11)
+         remark #15300: LOOP WAS VECTORIZED
+      LOOP END
+
+      LOOP BEGIN at d2q9-bgk.c(660,11)
+         remark #25045: Fused Loops: ( 660 668 )
+
+         remark #15301: FUSED LOOP WAS VECTORIZED
+         remark #25456: Number of Array Refs Scalar Replaced In Loop: 3
+      LOOP END
+
+      LOOP BEGIN at d2q9-bgk.c(668,11)
+      LOOP END
+
+      LOOP BEGIN at d2q9-bgk.c(630,11)
+      <Remainder loop for vectorization>
+         remark #25436: completely unrolled by 1  
+      LOOP END
+
+      LOOP BEGIN at d2q9-bgk.c(660,11)
+      <Remainder loop for vectorization>
+         remark #25436: completely unrolled by 1  
+      LOOP END
+   LOOP END
+LOOP END
+
+LOOP BEGIN at d2q9-bgk.c(689,5)
+   remark #15344: loop was not vectorized: vector dependence prevents vectorization. First dependence is shown below. Use level 5 report for details
+   remark #15346: vector dependence: assumed FLOW dependence between  line 702 and  line 702
+LOOP END
+
+LOOP BEGIN at d2q9-bgk.c(714,5)
+   remark #15542: loop was not vectorized: inner loop was already vectorized
+
+   LOOP BEGIN at d2q9-bgk.c(716,7)
+      remark #15542: loop was not vectorized: inner loop was already vectorized
+
+      LOOP BEGIN at d2q9-bgk.c(742,11)
+         remark #15300: LOOP WAS VECTORIZED
+      LOOP END
+
+      LOOP BEGIN at d2q9-bgk.c(772,11)
+         remark #25045: Fused Loops: ( 772 780 )
+
+         remark #15301: FUSED LOOP WAS VECTORIZED
+         remark #25456: Number of Array Refs Scalar Replaced In Loop: 1
+      LOOP END
+
+      LOOP BEGIN at d2q9-bgk.c(780,11)
+      LOOP END
+
+      LOOP BEGIN at d2q9-bgk.c(742,11)
+      <Remainder loop for vectorization>
+         remark #25436: completely unrolled by 1  
+      LOOP END
+
+      LOOP BEGIN at d2q9-bgk.c(772,11)
+      <Remainder loop for vectorization>
+         remark #25436: completely unrolled by 1  
+      LOOP END
+   LOOP END
+LOOP END
+
+    Report from: Code generation optimizations [cg]
+
+d2q9-bgk.c(561,27):remark #34000: call to memcpy implemented inline with loads and stores with proven source (alignment, offset): (32, 0), and destination (alignment, offset): (16, 0)
+d2q9-bgk.c(569,3):remark #34000: call to memcpy implemented inline with loads and stores with proven source (alignment, offset): (1, 0), and destination (alignment, offset): (16, 0)
+d2q9-bgk.c(569,3):remark #34000: call to memcpy implemented inline with loads and stores with proven source (alignment, offset): (1, 0), and destination (alignment, offset): (32, 0)
+===========================================================================
+
+Begin optimization report for: calc_reynolds(const t_param, t_speed *, int *)
+
+    Report from: Interprocedural optimizations [ipo]
+
+INLINE REPORT: (calc_reynolds(const t_param, t_speed *, int *)) [3] d2q9-bgk.c(422,1)
+  -> INLINE: (424,10) av_velocity(const t_param, t_speed *__restrict__, int *__restrict__)
+
+
+    Report from: Loop nest, Vector & Auto-parallelization optimizations [loop, vec, par]
+
+
+LOOP BEGIN at d2q9-bgk.c(204,3) inlined into d2q9-bgk.c(424,10)
+   remark #15344: loop was not vectorized: vector dependence prevents vectorization. First dependence is shown below. Use level 5 report for details
+   remark #15346: vector dependence: assumed FLOW dependence between  line 240 and  line 206
+
+   LOOP BEGIN at d2q9-bgk.c(206,5) inlined into d2q9-bgk.c(424,10)
+      remark #15335: loop was not vectorized: vectorization possible but seems inefficient. Use vector always directive or -vec-threshold0 to override 
+
+      LOOP BEGIN at d2q9-bgk.c(214,9) inlined into d2q9-bgk.c(424,10)
+         remark #15335: loop was not vectorized: vectorization possible but seems inefficient. Use vector always directive or -vec-threshold0 to override 
+         remark #25436: completely unrolled by 9  
+      LOOP END
+   LOOP END
+LOOP END
+===========================================================================
+
+Begin optimization report for: write_values(const t_param, t_speed *, int *, float *)
+
+    Report from: Interprocedural optimizations [ipo]
+
+INLINE REPORT: (write_values(const t_param, t_speed *, int *, float *)) [4] d2q9-bgk.c(447,1)
+  -> INLINE: (460,5) die(const char *, const int, const char *)
+  -> INLINE: (516,5) die(const char *, const int, const char *)
+
+
+    Report from: Loop nest, Vector & Auto-parallelization optimizations [loop, vec, par]
+
+
+LOOP BEGIN at d2q9-bgk.c(463,3)
+   remark #15344: loop was not vectorized: vector dependence prevents vectorization. First dependence is shown below. Use level 5 report for details
+   remark #15346: vector dependence: assumed OUTPUT dependence between  line 506 and  line 506
+
+   LOOP BEGIN at d2q9-bgk.c(465,5)
+      remark #15527: loop was not vectorized: function call to fprintf(FILE *__restrict__, const char *__restrict__, ...) cannot be vectorized   [ d2q9-bgk.c(506,7) ]
+
+      LOOP BEGIN at d2q9-bgk.c(478,9)
+         remark #25436: completely unrolled by 9   (pre-vector) 
+      LOOP END
+   LOOP END
+LOOP END
+
+LOOP BEGIN at d2q9-bgk.c(519,3)
+   remark #15527: loop was not vectorized: function call to fprintf(FILE *__restrict__, const char *__restrict__, ...) cannot be vectorized   [ d2q9-bgk.c(521,5) ]
+LOOP END
+===========================================================================
+
+Begin optimization report for: total_density(const t_param, t_speed *)
+
+    Report from: Interprocedural optimizations [ipo]
+
+DEAD STATIC FUNCTION: (total_density(const t_param, t_speed *)) d2q9-bgk.c(428,1)
+
+===========================================================================
+
+Begin optimization report for: die(const char *, const int, const char *)
+
+    Report from: Interprocedural optimizations [ipo]
+
+DEAD STATIC FUNCTION: (die(const char *, const int, const char *)) d2q9-bgk.c(530,1)
+
+===========================================================================
+
+Begin optimization report for: av_velocity(const t_param, t_speed *__restrict__, int *__restrict__)
+
+    Report from: Interprocedural optimizations [ipo]
+
+DEAD STATIC FUNCTION: (av_velocity(const t_param, t_speed *__restrict__, int *__restrict__)) d2q9-bgk.c(198,1)
+
+===========================================================================
+
+Begin optimization report for: finalise(const t_param *, t_speed **, int **, float **)
+
+    Report from: Interprocedural optimizations [ipo]
+
+DEAD STATIC FUNCTION: (finalise(const t_param *, t_speed **, int **, float **)) d2q9-bgk.c(404,1)
+
+===========================================================================
+
+Begin optimization report for: usage(const char *)
+
+    Report from: Interprocedural optimizations [ipo]
+
+DEAD STATIC FUNCTION: (usage(const char *)) d2q9-bgk.c(538,1)
+
+===========================================================================
+
+Begin optimization report for: initialise(const char *, const char *, t_param *, t_speed **, int **, float **)
+
+    Report from: Interprocedural optimizations [ipo]
+
+INLINE REPORT: (initialise(const char *, const char *, t_param *, t_speed **, int **, float **)) [10] d2q9-bgk.c(255,1)
+  -> INLINE: (268,5) die(const char *, const int, const char *)
+  -> INLINE: (274,20) die(const char *, const int, const char *)
+  -> INLINE: (278,20) die(const char *, const int, const char *)
+  -> INLINE: (282,20) die(const char *, const int, const char *)
+  -> INLINE: (286,20) die(const char *, const int, const char *)
+  -> INLINE: (290,20) die(const char *, const int, const char *)
+  -> INLINE: (294,20) die(const char *, const int, const char *)
+  -> INLINE: (298,20) die(const char *, const int, const char *)
+  -> INLINE: (325,27) die(const char *, const int, const char *)
+  -> INLINE: (330,31) die(const char *, const int, const char *)
+  -> INLINE: (371,5) die(const char *, const int, const char *)
+  -> INLINE: (378,22) die(const char *, const int, const char *)
+  -> INLINE: (380,40) die(const char *, const int, const char *)
+  -> INLINE: (382,40) die(const char *, const int, const char *)
+  -> INLINE: (384,23) die(const char *, const int, const char *)
+
+
+    Report from: Loop nest, Vector & Auto-parallelization optimizations [loop, vec, par]
+
+
+LOOP BEGIN at d2q9-bgk.c(337,3)
+   remark #15542: loop was not vectorized: inner loop was already vectorized
+
+   LOOP BEGIN at d2q9-bgk.c(339,5)
+      remark #15542: loop was not vectorized: inner loop was already vectorized
+
+      LOOP BEGIN at d2q9-bgk.c(349,9)
+         remark #15301: MATERIALIZED LOOP WAS VECTORIZED
+      LOOP END
+   LOOP END
+LOOP END
+
+LOOP BEGIN at d2q9-bgk.c(357,3)
+   remark #15542: loop was not vectorized: inner loop was already vectorized
+
+   LOOP BEGIN at d2q9-bgk.c(359,5)
+      remark #25408: memset generated
+      remark #15542: loop was not vectorized: inner loop was already vectorized
+
+      LOOP BEGIN at d2q9-bgk.c(359,5)
+         remark #15300: LOOP WAS VECTORIZED
+      LOOP END
+
+      LOOP BEGIN at d2q9-bgk.c(359,5)
+      <Remainder loop for vectorization>
+      LOOP END
+   LOOP END
+LOOP END
+
+LOOP BEGIN at d2q9-bgk.c(375,3)
+   remark #15521: loop was not vectorized: loop control variable was not identified. Explicitly compute the iteration count before executing the loop or try using canonical loop form
+LOOP END
+
+    Report from: Code generation optimizations [cg]
+
+d2q9-bgk.c(361,9):remark #34026: call to memset implemented as a call to optimized library version
+===========================================================================
+
+    Report from: Profile guided optimizations [pgo]
+
+
+
+Profile feedback used a statically estimated profile for the following routines:
+
+  File: d2q9-bgk.c
+        main(int, char **)(118)
+        initialise(const char *, const char *, t_param *, t_speed **, int **, float **)(255)
+        calc_reynolds(const t_param, t_speed *, int *)(422)
+        write_values(const t_param, t_speed *, int *, float *)(447)
+        d2q9_bgk(const t_param, const float, t_speed *__restrict__, int *__restrict__, float *, int)(548)
+
+
+  0 out of 5 routine(s) used training profile data for PGO feedback
+  0 out of 5 routine(s) were unable to use training profile data for PGO feedback
+  0 out of 5 routine(s) were unable to find training profile data for PGO feedback
+  5 out of 5 routine(s) used a static estimate profile for PGO feedback
+
+
+
