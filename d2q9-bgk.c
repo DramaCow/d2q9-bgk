@@ -88,12 +88,12 @@ int initialise(const char* paramfile, const char* obstaclefile,
                int** obstacles_ptr, float** av_vels_ptr);
 
 // all-in-one
-int d2q9_bgk(const t_param params, const float tot_cells, t_speed *restrict cells, int *restrict obstacles, float* av_vels, int tt);
+int d2q9_bgk(const t_param params, const float tot_cells, t_speed* restrict cells, int *restrict obstacles, float* av_vels, int tt);
 
 /* compute average velocity */
-float av_velocity(const t_param params, t_speed *restrict cells, int *restrict obstacles);
+float av_velocity(const t_param params, t_speed* restrict cells, int *restrict obstacles);
 
-int write_values(const t_param params, t_speed *cells, int *obstacles, float *av_vels);
+int write_values(const t_param params, t_speed* cells, int *obstacles, float *av_vels);
 
 /* finalise, including freeing up allocated memory */
 int finalise(const t_param* params, t_speed** cells_ptr,
@@ -194,7 +194,7 @@ int main(int argc, char* argv[])
 // === AVERAGE VELOCITY ===
 // ========================
 
-float av_velocity(const t_param params, t_speed *restrict cells, int *restrict obstacles)
+float av_velocity(const t_param params, t_speed* restrict cells, int *restrict obstacles)
 {
   int   tot_cells = 0;  // no. of cells used in calculation
   float tot_u = 0.0f;    // accumulated magnitudes of velocity for each cell
@@ -544,7 +544,7 @@ void usage(const char* exe)
 // === ALL IN ONE ===
 // ==================
 
-int d2q9_bgk(const t_param params, const float tot_cells, t_speed *restrict cells, int *restrict obstacles, float* av_vels, int tt)
+int d2q9_bgk(const t_param params, const float tot_cells, t_speed* restrict cells, int *restrict obstacles, float* av_vels, int tt)
 {
   // compute weighting factors
   const float w1a = params.density * params.accel / 9.0f;
