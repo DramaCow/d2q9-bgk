@@ -53,6 +53,7 @@
 #include<time.h>
 #include<sys/time.h>
 #include<sys/resource.h>
+#include<mpi.h>
 
 #define NSPEEDS         9
 #define FINALSTATEFILE  "final_state.dat"
@@ -138,6 +139,20 @@ int main(int argc, char* argv[])
   initialise(paramfile, obstaclefile, &params, &cells, &obstacles, &av_vels);
   for (int ii = 0; ii < params.nx * params.ny; ii++) if (!obstacles[ii]) ++tot_cells;
 
+  // Initialize MPI environment.
+  MPI_Init(&argc, &argv);
+
+  int flag;
+  // Check initialization was successful.
+  MPI_Initialized(&flag);
+  if(flag != 1) {
+    MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
+  }
+
+  int rank, size;
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  MPI_Comm_size(MPI_COMM_WORLD, &size);
+
   // iterate for maxIters timesteps 
   gettimeofday(&timstr, NULL);
   tic = timstr.tv_sec + (timstr.tv_usec / 1000000.0);
@@ -173,13 +188,23 @@ int main(int argc, char* argv[])
   systim = timstr.tv_sec + (timstr.tv_usec / 1000000.0);
 
   // write final values and free memory 
-  printf("==done==\n");
-  printf("Reynolds number:\t\t%.12E\n", calc_reynolds(params, cells, obstacles));
-  printf("Elapsed time:\t\t\t%.6lf (s)\n", toc - tic);
-  printf("Elapsed user CPU time:\t\t%.6lf (s)\n", usrtim);
-  printf("Elapsed system CPU time:\t%.6lf (s)\n", systim);
-  write_values(params, cells, obstacles, av_vels);
-  finalise(&params, &cells, &obstacles, &av_vels);
+	if (rank == 0) {
+  	printf("==done==\n");
+  	printf("Reynolds number:\t\t%.12E\n", calc_reynolds(params, cells, obstacles));
+  	printf("Elapsed time:\t\t\t%.6lf (s)\n", toc - tic);
+  	printf("Elapsed user CPU time:\t\t%.6lf (s)\n", usrtim);
+  	printf("Elapsed system CPU time:\t%.6lf (s)\n", systim);
+  	write_values(params, cells, obstacles, av_vels);
+  	finalise(&params, &cells, &obstacles, &av_vels);
+	}
+
+  // Finalize MPI environment
+  MPI_Finalize();
+
+  MPI_Finalized(&flag);
+  if(flag != 1) {
+    MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
+  }
 
   return EXIT_SUCCESS;
 }
