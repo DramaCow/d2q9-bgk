@@ -1,51 +1,52 @@
-// Code to implement a d2q9-bgk lattice boltzmann scheme.
-// 'd2' inidates a 2-dimensional grid, and
-// 'q9' indicates 9 velocities per grid cell.
-// 'bgk' refers to the Bhatnagar-Gross-Krook collision step.
-//
-// The 'speeds' in each cell are numbered as follows:
-//
-// 6 2 5
-//  \|/
-// 3-0-1
-//  /|\
-// 7 4 8
-//
-// A 2D grid:
-//
-//           cols
-//       --- --- ---
-//      | D | E | F |
-// rows  --- --- ---
-//      | A | B | C |
-//       --- --- ---
-//
-// 'unwrapped' in row major order to give a 1D array:
-//
-//  --- --- --- --- --- ---
-// | A | B | C | D | E | F |
-//  --- --- --- --- --- ---
-//
-// Grid indicies are:
-//
-//          ny
-//          ^       cols(jj)
-//          |  ----- ----- -----
-//          | | ... | ... | etc |
-//          |  ----- ----- -----
-// rows(ii) | | 1,0 | 1,1 | 1,2 |
-//          |  ----- ----- -----
-//          | | 0,0 | 0,1 | 0,2 |
-//          |  ----- ----- -----
-//          ----------------------> nx
-//
-// Note the names of the input parameter and obstacle files
-// are passed on the command line, e.g.:
-//
-//   d2q9-bgk.exe input.params obstacles.dat
-//
-// Be sure to adjust the grid dimensions in the parameter file
-// if you choose a different obstacle file.
+/* Code to implement a d2q9-bgk lattice boltzmann scheme.
+** 'd2' inidates a 2-dimensional grid, and
+** 'q9' indicates 9 velocities per grid cell.
+** 'bgk' refers to the Bhatnagar-Gross-Krook collision step.
+**
+** The 'speeds' in each cell are numbered as follows:
+**
+** 6 2 5
+**  \|/
+** 3-0-1
+**  /|\
+** 7 4 8
+**
+** A 2D grid:
+**
+**           cols
+**       --- --- ---
+**      | D | E | F |
+** rows  --- --- ---
+**      | A | B | C |
+**       --- --- ---
+**
+** 'unwrapped' in row major order to give a 1D array:
+**
+**  --- --- --- --- --- ---
+** | A | B | C | D | E | F |
+**  --- --- --- --- --- ---
+**
+** Grid indicies are:
+**
+**          ny
+**          ^       cols(jj)
+**          |  ----- ----- -----
+**          | | ... | ... | etc |
+**          |  ----- ----- -----
+** rows(ii) | | 1,0 | 1,1 | 1,2 |
+**          |  ----- ----- -----
+**          | | 0,0 | 0,1 | 0,2 |
+**          |  ----- ----- -----
+**          ----------------------> nx
+**
+** Note the names of the input parameter and obstacle files
+** are passed on the command line, e.g.:
+**
+**   d2q9-bgk.exe input.params obstacles.dat
+**
+** Be sure to adjust the grid dimensions in the parameter file
+** if you choose a different obstacle file.
+*/
 
 #include<stdio.h>
 #include<stdlib.h>
@@ -56,6 +57,7 @@
 #include<mpi.h>
 
 #define NSPEEDS         9
+#define MASTER          0
 #define FINALSTATEFILE  "final_state.dat"
 #define AVVELSFILE      "av_vels.dat"
 
@@ -85,7 +87,7 @@ int initialise(const char* paramfile, const char* obstaclefile,
                int** obstacles_ptr, float** av_vels_ptr);
 
 // all-in-one
-int d2q9_bgk(const t_param params, const float tot_cells, t_speed* restrict cells, int *restrict obstacles, float* av_vels, int tt);
+int d2q9_bgk(const t_param params, const float tot_cells, t_speed* restrict cells, int *restrict obstacles, float* av_vels, int tt, int start, int end);
 
 // compute average velocity 
 float av_velocity(const t_param params, t_speed* restrict cells, int *restrict obstacles);
@@ -153,6 +155,9 @@ int main(int argc, char* argv[])
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
   MPI_Comm_size(MPI_COMM_WORLD, &size);
 
+	int start = rank  * (params.ny / size); // the starting row a node computes
+	int end   = start + (params.ny / size); // the limit row a node computes
+
   // iterate for maxIters timesteps 
   gettimeofday(&timstr, NULL);
   tic = timstr.tv_sec + (timstr.tv_usec / 1000000.0);
@@ -168,7 +173,7 @@ int main(int argc, char* argv[])
   //       I've ommitted these due to time constraints under the assumption that (for now)
   //       inputs will have an even number of max iterations.
   for (int tt = 0; tt < params.maxIters; tt+=2) {
-    d2q9_bgk(params, tot_cells, cells, obstacles, av_vels, tt);
+    d2q9_bgk(params, tot_cells, cells, obstacles, av_vels, tt, start, end);
 #ifdef DEBUG
     printf("==timestep: %d==\n", tt);
     printf("av velocity: %.12E\n", av_vels[tt]);
@@ -187,8 +192,44 @@ int main(int argc, char* argv[])
   timstr = ru.ru_stime;
   systim = timstr.tv_sec + (timstr.tv_usec / 1000000.0);
 
+  float *buffer = (float*)malloc(sizeof(float) * NSPEEDS * (params.nx * (params.ny / size)));
+	// Send data to master to be recombined into answer
+	if (rank != MASTER) {
+		// populate buffer
+		for (int ii = start; ii < end; ++ii) {
+      for (int jj = 0; jj < params.nx; ++jj) {
+			  for (int kk = 0; kk < NSPEEDS; ++kk) {
+					buffer[((ii - start) * params.nx + jj) * NSPEEDS + kk] = cells[ii * params.nx + jj].speeds[kk];
+				}	
+			}
+		}
+ 
+    MPI_Ssend(buffer, NSPEEDS * (params.nx * (params.ny / size)), MPI_FLOAT, MASTER, 0, MPI_COMM_WORLD); // what does the tag=0 do?
+	}
+	// Recombine data into answer
+	else {
+		MPI_Status status;
+
+    // receive segment from each node
+    for (int source = 1; source < size; ++source) {
+	    MPI_Recv(buffer, NSPEEDS * (params.nx * (params.ny / size)), MPI_FLOAT, source, 0, MPI_COMM_WORLD, &status); // what does the tag=0 do?
+
+     	int start = source * (params.ny / size);
+	    int end   = start  + (params.ny / size);
+
+		  for (int ii = start; ii < end; ++ii) {
+        for (int jj = 0; jj < params.nx; ++jj) {
+		  	  for (int kk = 0; kk < NSPEEDS; ++kk) {
+						cells[ii * params.nx + jj].speeds[kk] = buffer[((ii - start) * params.nx + jj) * NSPEEDS + kk]; 
+		  		}	
+		  	}
+		  }
+		}
+	} 
+	free(buffer);
+	
   // write final values and free memory 
-	if (rank == 0) {
+	if (rank == MASTER) {
   	printf("==done==\n");
   	printf("Reynolds number:\t\t%.12E\n", calc_reynolds(params, cells, obstacles));
   	printf("Elapsed time:\t\t\t%.6lf (s)\n", toc - tic);
@@ -441,7 +482,7 @@ float total_density(const t_param params, t_speed* cells)
 {
   float total = 0.0f; // accumulator
 
-  //#pragma omp parallel for default(none) shared(cells) schedule(static) reduction(+:total)
+  ////#pragma omp parallel for default(none) shared(cells) schedule(static) reduction(+:total)
   for (int ii = 0; ii < params.ny; ii++)
   {
     for (int jj = 0; jj < params.nx; jj++)
@@ -557,7 +598,7 @@ void usage(const char* exe)
 // === ALL IN ONE ===
 // ==================
 
-int d2q9_bgk(const t_param params, const float tot_cells, t_speed* restrict cells, int *restrict obstacles, float* av_vels, int tt)
+int d2q9_bgk(const t_param params, const float tot_cells, t_speed* restrict cells, int *restrict obstacles, float* av_vels, int tt, int start, int end)
 {
   // compute weighting factors
   const float w1a = params.density * params.accel / 9.0f;
@@ -579,9 +620,9 @@ int d2q9_bgk(const t_param params, const float tot_cells, t_speed* restrict cell
   float tot_u_t1 = 0.0f; // accumulated magnitudes of velocity for each cell : t
   float tot_u_t2 = 0.0f; // accumulated magnitudes of velocity for each cell : t+1
 
-  #pragma omp parallel default(none) shared(cells,obstacles) reduction(+:tot_u_t1,tot_u_t2) firstprivate(w,u)
+  //#pragma omp parallel default(none) shared(cells,obstacles) reduction(+:tot_u_t1,tot_u_t2) firstprivate(w,u)
   {
-    #pragma omp for schedule(static)
+    //#pragma omp for schedule(static)
     for (int jj = 0; jj < params.nx; ++jj)
     {
       // if the cell is not occupied and
@@ -603,7 +644,7 @@ int d2q9_bgk(const t_param params, const float tot_cells, t_speed* restrict cell
     }
 
     // loop over the cells in the grid
-    #pragma omp for schedule(static)
+    //#pragma omp for schedule(static)
     for (int ii = 0; ii < params.ny; ++ii)
     {
       for (int jj = 0; jj < params.nx; ++jj)
@@ -697,7 +738,7 @@ int d2q9_bgk(const t_param params, const float tot_cells, t_speed* restrict cell
       }
     }
 
-    #pragma omp for schedule(static)
+    //#pragma omp for schedule(static)
     for (int jj = 0; jj < params.nx; ++jj)
     {
       int x_e = (jj == params.nx - 1) ? (0) : (jj + 1);
@@ -722,7 +763,7 @@ int d2q9_bgk(const t_param params, const float tot_cells, t_speed* restrict cell
     }
 
     // loop over the cells in the grid
-    #pragma omp for schedule(static)
+    //#pragma omp for schedule(static)
     for (int ii = 0; ii < params.ny; ++ii)
     {
       for (int jj = 0; jj < params.nx; ++jj)
