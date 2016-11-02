@@ -2,8 +2,9 @@
 
 EXE=d2q9-bgk
 
-CC=icc
-CFLAGS= -std=c99 -Wall -Ofast -xHost -ipo -par-affinity=compact -fopenmp
+CC=mpicc
+#CFLAGS= -std=c99 -Wall -Ofast -xHost -ipo -par-affinity=compact -fopenmp
+CFLAGS= -std=c99 -Wall -Ofast
 LIBS = -lm
 
 FINAL_STATE_FILE=./final_state.dat
