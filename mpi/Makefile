@@ -36,3 +36,4 @@ check2:
 
 clean:
 	rm -f $(EXE)
+	machine.file.*

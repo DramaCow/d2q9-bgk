@@ -5,3 +5,4 @@ final_state.dat
 av_vels.dat
 *.optrpt
 d2q9-bgk.out
+machine.file.*
