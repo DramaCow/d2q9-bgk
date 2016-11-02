@@ -1,53 +1,51 @@
-/*
-** Code to implement a d2q9-bgk lattice boltzmann scheme.
-** 'd2' inidates a 2-dimensional grid, and
-** 'q9' indicates 9 velocities per grid cell.
-** 'bgk' refers to the Bhatnagar-Gross-Krook collision step.
-**
-** The 'speeds' in each cell are numbered as follows:
-**
-** 6 2 5
-**  \|/
-** 3-0-1
-**  /|\
-** 7 4 8
-**
-** A 2D grid:
-**
-**           cols
-**       --- --- ---
-**      | D | E | F |
-** rows  --- --- ---
-**      | A | B | C |
-**       --- --- ---
-**
-** 'unwrapped' in row major order to give a 1D array:
-**
-**  --- --- --- --- --- ---
-** | A | B | C | D | E | F |
-**  --- --- --- --- --- ---
-**
-** Grid indicies are:
-**
-**          ny
-**          ^       cols(jj)
-**          |  ----- ----- -----
-**          | | ... | ... | etc |
-**          |  ----- ----- -----
-** rows(ii) | | 1,0 | 1,1 | 1,2 |
-**          |  ----- ----- -----
-**          | | 0,0 | 0,1 | 0,2 |
-**          |  ----- ----- -----
-**          ----------------------> nx
-**
-** Note the names of the input parameter and obstacle files
-** are passed on the command line, e.g.:
-**
-**   d2q9-bgk.exe input.params obstacles.dat
-**
-** Be sure to adjust the grid dimensions in the parameter file
-** if you choose a different obstacle file.
-*/
+// Code to implement a d2q9-bgk lattice boltzmann scheme.
+// 'd2' inidates a 2-dimensional grid, and
+// 'q9' indicates 9 velocities per grid cell.
+// 'bgk' refers to the Bhatnagar-Gross-Krook collision step.
+//
+// The 'speeds' in each cell are numbered as follows:
+//
+// 6 2 5
+//  \|/
+// 3-0-1
+//  /|\
+// 7 4 8
+//
+// A 2D grid:
+//
+//           cols
+//       --- --- ---
+//      | D | E | F |
+// rows  --- --- ---
+//      | A | B | C |
+//       --- --- ---
+//
+// 'unwrapped' in row major order to give a 1D array:
+//
+//  --- --- --- --- --- ---
+// | A | B | C | D | E | F |
+//  --- --- --- --- --- ---
+//
+// Grid indicies are:
+//
+//          ny
+//          ^       cols(jj)
+//          |  ----- ----- -----
+//          | | ... | ... | etc |
+//          |  ----- ----- -----
+// rows(ii) | | 1,0 | 1,1 | 1,2 |
+//          |  ----- ----- -----
+//          | | 0,0 | 0,1 | 0,2 |
+//          |  ----- ----- -----
+//          ----------------------> nx
+//
+// Note the names of the input parameter and obstacle files
+// are passed on the command line, e.g.:
+//
+//   d2q9-bgk.exe input.params obstacles.dat
+//
+// Be sure to adjust the grid dimensions in the parameter file
+// if you choose a different obstacle file.
 
 #include<stdio.h>
 #include<stdlib.h>
@@ -60,29 +58,27 @@
 #define FINALSTATEFILE  "final_state.dat"
 #define AVVELSFILE      "av_vels.dat"
 
-/* struct to hold the parameter values */
+// struct to hold the parameter values 
 typedef struct
 {
-  int    nx;            /* no. of cells in x-direction */
-  int    ny;            /* no. of cells in y-direction */
-  int    maxIters;      /* no. of iterations */
-  int    reynolds_dim;  /* dimension for Reynolds number */
-  float density;       /* density per link */
-  float accel;         /* density redistribution */
-  float omega;         /* relaxation parameter */
+  int    nx;            // no. of cells in x-direction 
+  int    ny;            // no. of cells in y-direction 
+  int    maxIters;      // no. of iterations 
+  int    reynolds_dim;  // dimension for Reynolds number 
+  float density;       // density per link 
+  float accel;         // density redistribution 
+  float omega;         // relaxation parameter 
 } t_param;
 
-/* struct to hold the 'speed' values */
+// struct to hold the 'speed' values 
 typedef struct
 {
   float speeds[NSPEEDS];
 } t_speed;
 
-/*
-** function prototypes
-*/
+// function prototypes
 
-/* load params, allocate memory, load obstacles & initialise fluid particle densities */
+// load params, allocate memory, load obstacles & initialise fluid particle densities 
 int initialise(const char* paramfile, const char* obstaclefile,
                t_param* params, t_speed** cells_ptr,
                int** obstacles_ptr, float** av_vels_ptr);
@@ -90,46 +86,44 @@ int initialise(const char* paramfile, const char* obstaclefile,
 // all-in-one
 int d2q9_bgk(const t_param params, const float tot_cells, t_speed* restrict cells, int *restrict obstacles, float* av_vels, int tt);
 
-/* compute average velocity */
+// compute average velocity 
 float av_velocity(const t_param params, t_speed* restrict cells, int *restrict obstacles);
 
 int write_values(const t_param params, t_speed* cells, int *obstacles, float *av_vels);
 
-/* finalise, including freeing up allocated memory */
+// finalise, including freeing up allocated memory 
 int finalise(const t_param* params, t_speed** cells_ptr,
              int** obstacles_ptr, float** av_vels_ptr);
 
-/* Sum all the densities in the grid.
-** The total should remain constant from one timestep to the next. */
+// Sum all the densities in the grid.
+// The total should remain constant from one timestep to the next.
 float total_density(const t_param params, t_speed* cells);
 
-/* calculate Reynolds number */
+// calculate Reynolds number 
 float calc_reynolds(const t_param params, t_speed* cells, int* obstacles);
 
-/* utility functions */
+// utility functions 
 void die(const char* message, const int line, const char* file);
 void usage(const char* exe);
 
-/*
-** main program:
-** initialise, timestep loop, finalise
-*/
+// main program:
+// initialise, timestep loop, finalise
 int main(int argc, char* argv[])
 {
-  char*    paramfile = NULL;    /* name of the input parameter file */
-  char*    obstaclefile = NULL; /* name of a the input obstacle file */
-  t_param  params;              /* struct to hold parameter values */
-  t_speed* cells     = NULL;    /* grid containing fluid densities */
-  int*     obstacles = NULL;    /* grid indicating which cells are blocked */
-  float* av_vels   = NULL;     /* a record of the av. velocity computed for each timestep */
-  struct timeval timstr;        /* structure to hold elapsed time */
-  struct rusage ru;             /* structure to hold CPU time--system and user */
-  double tic, toc;              /* doubleing point numbers to calculate elapsed wallclock time */
-  double usrtim;                /* doubleing point number to record elapsed user CPU time */
-  double systim;                /* doubleing point number to record elapsed system CPU time */
+  char*    paramfile = NULL;    // name of the input parameter file 
+  char*    obstaclefile = NULL; // name of a the input obstacle file 
+  t_param  params;              // struct to hold parameter values 
+  t_speed* cells     = NULL;    // grid containing fluid densities 
+  int*     obstacles = NULL;    // grid indicating which cells are blocked 
+  float* av_vels   = NULL;     // a record of the av. velocity computed for each timestep 
+  struct timeval timstr;        // structure to hold elapsed time 
+  struct rusage ru;             // structure to hold CPU time--system and user 
+  double tic, toc;              // doubleing point numbers to calculate elapsed wallclock time 
+  double usrtim;                // doubleing point number to record elapsed user CPU time 
+  double systim;                // doubleing point number to record elapsed system CPU time 
   float tot_cells = 0.0f;       // number of non-obstacle cells
 
-  /* parse the command line */
+  // parse the command line 
   if (argc != 3)
   {
     usage(argv[0]);
@@ -140,11 +134,11 @@ int main(int argc, char* argv[])
     obstaclefile = argv[2];
   }
 
-  /* initialise our data structures and load values from file */
+  // initialise our data structures and load values from file 
   initialise(paramfile, obstaclefile, &params, &cells, &obstacles, &av_vels);
   for (int ii = 0; ii < params.nx * params.ny; ii++) if (!obstacles[ii]) ++tot_cells;
 
-  /* iterate for maxIters timesteps */
+  // iterate for maxIters timesteps 
   gettimeofday(&timstr, NULL);
   tic = timstr.tv_sec + (timstr.tv_usec / 1000000.0);
 
@@ -178,7 +172,7 @@ int main(int argc, char* argv[])
   timstr = ru.ru_stime;
   systim = timstr.tv_sec + (timstr.tv_usec / 1000000.0);
 
-  /* write final values and free memory */
+  // write final values and free memory 
   printf("==done==\n");
   printf("Reynolds number:\t\t%.12E\n", calc_reynolds(params, cells, obstacles));
   printf("Elapsed time:\t\t\t%.6lf (s)\n", toc - tic);
@@ -199,16 +193,16 @@ float av_velocity(const t_param params, t_speed* restrict cells, int *restrict o
   int   tot_cells = 0;  // no. of cells used in calculation
   float tot_u = 0.0f;    // accumulated magnitudes of velocity for each cell
 
-  /* loop over all non-blocked cells */
+  // loop over all non-blocked cells 
   //#pragma omp parallel for default(none) shared(cells,obstacles) schedule(static) reduction(+:tot_cells,tot_u)
   for (int ii = 0; ii < params.ny; ii++)
   {
     for (int jj = 0; jj < params.nx; jj++)
     {
-      /* ignore occupied cells */
+      // ignore occupied cells 
       if (!obstacles[ii * params.nx + jj])
       {
-        /* local density total */
+        // local density total 
         float local_density = 0.0f;
 
         for (int kk = 0; kk < NSPEEDS; kk++)
@@ -216,7 +210,7 @@ float av_velocity(const t_param params, t_speed* restrict cells, int *restrict o
           local_density += cells[ii * params.nx + jj].speeds[kk];
         }
 
-        /* x-component of velocity */
+        // x-component of velocity 
         float u_x = (
                       + cells[ii * params.nx + jj].speeds[1]
                       + cells[ii * params.nx + jj].speeds[5]
@@ -225,7 +219,7 @@ float av_velocity(const t_param params, t_speed* restrict cells, int *restrict o
                       - cells[ii * params.nx + jj].speeds[6]
                       - cells[ii * params.nx + jj].speeds[7]
                     ) / local_density;
-        /* compute y velocity component */
+        // compute y velocity component 
         float u_y = (
                       + cells[ii * params.nx + jj].speeds[2]
                       + cells[ii * params.nx + jj].speeds[5]
@@ -234,9 +228,9 @@ float av_velocity(const t_param params, t_speed* restrict cells, int *restrict o
                       - cells[ii * params.nx + jj].speeds[7]
                       - cells[ii * params.nx + jj].speeds[8]
                     ) / local_density;
-        /* accumulate the norm of x- and y- velocity components */
+        // accumulate the norm of x- and y- velocity components 
         tot_u += sqrtf((u_x * u_x) + (u_y * u_y));
-        /* increase counter of inspected cells */
+        // increase counter of inspected cells 
         tot_cells++;
       }
     }
@@ -253,13 +247,13 @@ int initialise(const char* paramfile, const char* obstaclefile,
                t_param* params, t_speed** cells_ptr,
                int** obstacles_ptr, float** av_vels_ptr)
 {
-  char   message[1024];  /* message buffer */
-  FILE*   fp;            /* file pointer */
-  int    xx, yy;         /* generic array indices */
-  int    blocked;        /* indicates whether a cell is blocked by an obstacle */
-  int    retval;         /* to hold return value for checking */
+  char   message[1024];  // message buffer 
+  FILE*   fp;            // file pointer 
+  int    xx, yy;         // generic array indices 
+  int    blocked;        // indicates whether a cell is blocked by an obstacle 
+  int    retval;         // to hold return value for checking 
 
-  /* open the parameter file */
+  // open the parameter file 
   fp = fopen(paramfile, "r");
 
   if (fp == NULL)
@@ -268,7 +262,7 @@ int initialise(const char* paramfile, const char* obstaclefile,
     die(message, __LINE__, __FILE__);
   }
 
-  /* read in the parameter values */
+  // read in the parameter values 
   retval = fscanf(fp, "%d\n", &(params->nx));
 
   if (retval != 1) die("could not read param file: nx", __LINE__, __FILE__);
@@ -297,39 +291,37 @@ int initialise(const char* paramfile, const char* obstaclefile,
 
   if (retval != 1) die("could not read param file: omega", __LINE__, __FILE__);
 
-  /* and close up the file */
+  // and close up the file 
   fclose(fp);
 
-  /*
-  ** Allocate memory.
-  **
-  ** Remember C is pass-by-value, so we need to
-  ** pass pointers into the initialise function.
-  **
-  ** NB we are allocating a 1D array, so that the
-  ** memory will be contiguous.  We still want to
-  ** index this memory as if it were a (row major
-  ** ordered) 2D array, however.  We will perform
-  ** some arithmetic using the row and column
-  ** coordinates, inside the square brackets, when
-  ** we want to access elements of this array.
-  **
-  ** Note also that we are using a structure to
-  ** hold an array of 'speeds'.  We will allocate
-  ** a 1D array of these structs.
-  */
+  // Allocate memory.
+  //
+  // Remember C is pass-by-value, so we need to
+  // pass pointers into the initialise function.
+  //
+  // NB we are allocating a 1D array, so that the
+  // memory will be contiguous.  We still want to
+  // index this memory as if it were a (row major
+  // ordered) 2D array, however.  We will perform
+  // some arithmetic using the row and column
+  // coordinates, inside the square brackets, when
+  // we want to access elements of this array.
+  //
+  // Note also that we are using a structure to
+  // hold an array of 'speeds'.  We will allocate
+  // a 1D array of these structs.
 
-  /* main grid */
+  // main grid 
   *cells_ptr = (t_speed*)malloc(sizeof(t_speed) * (params->ny * params->nx));
 
   if (*cells_ptr == NULL) die("cannot allocate memory for cells", __LINE__, __FILE__);
 
-  /* the map of obstacles */
+  // the map of obstacles 
   *obstacles_ptr = malloc(sizeof(int) * (params->ny * params->nx));
 
   if (*obstacles_ptr == NULL) die("cannot allocate column memory for obstacles", __LINE__, __FILE__);
 
-  /* initialise densities */
+  // initialise densities 
   float w0 = params->density * 4.0f / 9.0f;
   float w1 = params->density      / 9.0f;
   float w2 = params->density      / 36.0f;
@@ -338,14 +330,14 @@ int initialise(const char* paramfile, const char* obstaclefile,
   {
     for (int jj = 0; jj < params->nx; jj++)
     {
-      /* centre */
+      // centre 
       (*cells_ptr)[ii * params->nx + jj].speeds[0] = w0;
-      /* axis directions */
+      // axis directions 
       (*cells_ptr)[ii * params->nx + jj].speeds[1] = w1;
       (*cells_ptr)[ii * params->nx + jj].speeds[2] = w1;
       (*cells_ptr)[ii * params->nx + jj].speeds[3] = w1;
       (*cells_ptr)[ii * params->nx + jj].speeds[4] = w1;
-      /* diagonals */
+      // diagonals 
       (*cells_ptr)[ii * params->nx + jj].speeds[5] = w2;
       (*cells_ptr)[ii * params->nx + jj].speeds[6] = w2;
       (*cells_ptr)[ii * params->nx + jj].speeds[7] = w2;
@@ -353,7 +345,7 @@ int initialise(const char* paramfile, const char* obstaclefile,
     }
   }
 
-  /* first set all cells in obstacle array to zero */
+  // first set all cells in obstacle array to zero 
   for (int ii = 0; ii < params->ny; ii++)
   {
     for (int jj = 0; jj < params->nx; jj++)
@@ -362,7 +354,7 @@ int initialise(const char* paramfile, const char* obstaclefile,
     }
   }
 
-  /* open the obstacle data file */
+  // open the obstacle data file 
   fp = fopen(obstaclefile, "r");
 
   if (fp == NULL)
@@ -371,10 +363,10 @@ int initialise(const char* paramfile, const char* obstaclefile,
     die(message, __LINE__, __FILE__);
   }
 
-  /* read-in the blocked cells list */
+  // read-in the blocked cells list 
   while ((retval = fscanf(fp, "%d %d %d\n", &xx, &yy, &blocked)) != EOF)
   {
-    /* some checks */
+    // some checks 
     if (retval != 3) die("expected 3 values per line in obstacle file", __LINE__, __FILE__);
 
     if (xx < 0 || xx > params->nx - 1) die("obstacle x-coord out of range", __LINE__, __FILE__);
@@ -383,17 +375,15 @@ int initialise(const char* paramfile, const char* obstaclefile,
 
     if (blocked != 1) die("obstacle blocked value should be 1", __LINE__, __FILE__);
 
-    /* assign to array */
+    // assign to array 
     (*obstacles_ptr)[yy * params->nx + xx] = blocked;
   }
 
-  /* and close the file */
+  // and close the file 
   fclose(fp);
 
-  /*
-  ** allocate space to hold a record of the avarage velocities computed
-  ** at each timestep
-  */
+  // allocate space to hold a record of the avarage velocities computed
+  // at each timestep
   *av_vels_ptr = (float*)malloc(sizeof(float) * params->maxIters);
 
   return EXIT_SUCCESS;
@@ -402,9 +392,7 @@ int initialise(const char* paramfile, const char* obstaclefile,
 int finalise(const t_param* params, t_speed** cells_ptr,
              int** obstacles_ptr, float** av_vels_ptr)
 {
-  /*
-  ** free up allocated memory
-  */
+  // free up allocated memory
   free(*cells_ptr);
   *cells_ptr = NULL;
 
@@ -445,13 +433,13 @@ float total_density(const t_param params, t_speed* cells)
 
 int write_values(const t_param params, t_speed* cells, int* obstacles, float* av_vels)
 {
-  FILE* fp;                       /* file pointer */
-  const float c_sq = 1.0f / 3.0f; /* sq. of speed of sound */
-  float local_density;            /* per grid cell sum of densities */
-  float pressure;                 /* fluid pressure in grid cell */
-  float u_x;                      /* x-component of velocity in grid cell */
-  float u_y;                      /* y-component of velocity in grid cell */
-  float u;                        /* norm--root of summed squares--of u_x and u_y */
+  FILE* fp;                       // file pointer 
+  const float c_sq = 1.0f / 3.0f; // sq. of speed of sound 
+  float local_density;            // per grid cell sum of densities 
+  float pressure;                 // fluid pressure in grid cell 
+  float u_x;                      // x-component of velocity in grid cell 
+  float u_y;                      // y-component of velocity in grid cell 
+  float u;                        // norm--root of summed squares--of u_x and u_y 
 
   fp = fopen(FINALSTATEFILE, "w");
 
@@ -464,13 +452,13 @@ int write_values(const t_param params, t_speed* cells, int* obstacles, float* av
   {
     for (int jj = 0; jj < params.nx; jj++)
     {
-      /* an occupied cell */
+      // an occupied cell 
       if (obstacles[ii * params.nx + jj])
       {
         u_x = u_y = u = 0.0f;
         pressure = params.density * c_sq;
       }
-      /* no obstacle */
+      // no obstacle 
       else
       {
         local_density = 0.0f;
@@ -480,7 +468,7 @@ int write_values(const t_param params, t_speed* cells, int* obstacles, float* av
           local_density += cells[ii * params.nx + jj].speeds[kk];
         }
 
-        /* compute x velocity component */
+        // compute x velocity component 
         u_x = (cells[ii * params.nx + jj].speeds[1]
                + cells[ii * params.nx + jj].speeds[5]
                + cells[ii * params.nx + jj].speeds[8]
@@ -488,7 +476,7 @@ int write_values(const t_param params, t_speed* cells, int* obstacles, float* av
                   + cells[ii * params.nx + jj].speeds[6]
                   + cells[ii * params.nx + jj].speeds[7]))
               / local_density;
-        /* compute y velocity component */
+        // compute y velocity component 
         u_y = (cells[ii * params.nx + jj].speeds[2]
                + cells[ii * params.nx + jj].speeds[5]
                + cells[ii * params.nx + jj].speeds[6]
@@ -496,13 +484,13 @@ int write_values(const t_param params, t_speed* cells, int* obstacles, float* av
                   + cells[ii * params.nx + jj].speeds[7]
                   + cells[ii * params.nx + jj].speeds[8]))
               / local_density;
-        /* compute norm of velocity */
+        // compute norm of velocity 
         u = sqrtf((u_x * u_x) + (u_y * u_y));
-        /* compute pressure */
+        // compute pressure 
         pressure = local_density * c_sq;
       }
 
-      /* write to file */
+      // write to file 
       fprintf(fp, "%d %d %.12E %.12E %.12E %.12E %d\n", jj, ii, u_x, u_y, u, pressure, obstacles[ii * params.nx + jj]);
     }
   }
@@ -571,18 +559,18 @@ int d2q9_bgk(const t_param params, const float tot_cells, t_speed* restrict cell
     #pragma omp for schedule(static)
     for (int jj = 0; jj < params.nx; ++jj)
     {
-      /* if the cell is not occupied and
-      ** we don't send a negative density */
+      // if the cell is not occupied and
+      // we don't send a negative density
       if (!obstacles[row2 * params.nx + jj]
           && (cells[row2 * params.nx + jj].speeds[3] - w1a) > 0.0f
           && (cells[row2 * params.nx + jj].speeds[6] - w2a) > 0.0f
           && (cells[row2 * params.nx + jj].speeds[7] - w2a) > 0.0f)
       {
-        /* increase 'east-side' densities */
+        // increase 'east-side' densities 
         cells[row2 * params.nx + jj].speeds[1] += w1a;
         cells[row2 * params.nx + jj].speeds[5] += w2a;
         cells[row2 * params.nx + jj].speeds[8] += w2a;
-        /* decrease 'west-side' densities */
+        // decrease 'west-side' densities 
         cells[row2 * params.nx + jj].speeds[3] -= w1a;
         cells[row2 * params.nx + jj].speeds[6] -= w2a;
         cells[row2 * params.nx + jj].speeds[7] -= w2a;
@@ -697,11 +685,11 @@ int d2q9_bgk(const t_param params, const float tot_cells, t_speed* restrict cell
           && (cells[row1 * params.nx + x_w].speeds[8] - w2a) > 0.0f
           && (cells[row3 * params.nx + x_w].speeds[5] - w2a) > 0.0f)
       {
-        /* increase 'east-side' densities */
+        // increase 'east-side' densities 
         cells[row2 * params.nx + x_e].speeds[3] += w1a;
         cells[row1 * params.nx + x_e].speeds[7] += w2a;
         cells[row3 * params.nx + x_e].speeds[6] += w2a;
-        /* decrease 'west-side' densities */
+        // decrease 'west-side' densities 
         cells[row2 * params.nx + x_w].speeds[1] -= w1a;
         cells[row1 * params.nx + x_w].speeds[8] -= w2a;
         cells[row3 * params.nx + x_w].speeds[5] -= w2a;
