@@ -36,4 +36,5 @@ check2:
 
 clean:
 	rm -f $(EXE)
+	rm -f d2q9-bgk.80s*
 	rm -f machine.file.*

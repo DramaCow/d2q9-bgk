@@ -5,4 +5,5 @@ final_state.dat
 av_vels.dat
 *.optrpt
 d2q9-bgk.out
+d2q9-bgk.80s*
 machine.file.*
