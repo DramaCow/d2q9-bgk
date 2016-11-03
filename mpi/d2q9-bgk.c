@@ -162,13 +162,13 @@ int main(int argc, char* argv[])
   MPI_Comm_size(MPI_COMM_WORLD, &size);
 
   int remainder = params.ny % size;                    // number of spar lines, each line of such is given to a thread
-	int start = rank  * (params.ny / size)               // the starting row a node computes
+  int start = rank  * (params.ny / size)               // the starting row a node computes
               + (rank < remainder ? rank : remainder); // consider the extra lines given to previous segments
-	int end   = start + (params.ny / size)               // the limit row a node computes
+  int end   = start + (params.ny / size)               // the limit row a node computes
               + (rank < remainder ? 1 : 0);            // distribute the remaining lines 
 
-	if (rank == MASTER) printf("remainder = %d\n", remainder);
-	printf("rank %d : start = %d, end = %d, rows = %d\n", rank, start, end, end-start);
+  if (rank == MASTER) printf("remainder = %d\n", remainder);
+  printf("rank %d : start = %d, end = %d, rows = %d\n", rank, start, end, end-start);
 
   // iterate for maxIters timesteps 
   gettimeofday(&timstr, NULL);
@@ -205,53 +205,53 @@ int main(int argc, char* argv[])
   systim = timstr.tv_sec + (timstr.tv_usec / 1000000.0);
 
   float *buffer = (float*)malloc(sizeof(float) * NSPEEDS * (params.nx * (params.ny / size + 1))); // maximum possible size of a segment
-	// Send data to master to be recombined into answer
-	if (rank != MASTER) {
-		// populate buffer
-		for (int ii = start; ii < end; ++ii) {
+  // Send data to master to be recombined into answer
+  if (rank != MASTER) {
+    // populate buffer
+    for (int ii = start; ii < end; ++ii) {
       for (int jj = 0; jj < params.nx; ++jj) {
-			  for (int kk = 0; kk < NSPEEDS; ++kk) {
-					buffer[((ii - start) * params.nx + jj) * NSPEEDS + kk] = cells[ii * params.nx + jj].speeds[kk];
-				}	
-			}
-		}
+        for (int kk = 0; kk < NSPEEDS; ++kk) {
+          buffer[((ii - start) * params.nx + jj) * NSPEEDS + kk] = cells[ii * params.nx + jj].speeds[kk];
+        }  
+      }
+    }
  
     MPI_Ssend(buffer, NSPEEDS * (params.nx * (end - start)), MPI_FLOAT, MASTER, 0, MPI_COMM_WORLD); // what does the tag=0 do?
-	}
-	// Recombine data into answer
-	else {
-		MPI_Status status;
+  }
+  // Recombine data into answer
+  else {
+    MPI_Status status;
 
     // receive segment from each node
     for (int source = 1; source < size; ++source) {
-	    int start = source * (params.ny / size)                  // the starting row a node computes
+      int start = source * (params.ny / size)                  // the starting row a node computes
                   + (source < remainder ? source : remainder); // consider the extra lines given to previous segments
- 	    int end   = start + (params.ny / size)                   // the limit row a node computes
+       int end   = start + (params.ny / size)                   // the limit row a node computes
                   + (source < remainder ? 1 : 0);              // distribute the remaining lines 
 
-	    MPI_Recv(buffer, NSPEEDS * (params.nx * (end - start)), MPI_FLOAT, source, 0, MPI_COMM_WORLD, &status); // what does the tag=0 do?
+      MPI_Recv(buffer, NSPEEDS * (params.nx * (end - start)), MPI_FLOAT, source, 0, MPI_COMM_WORLD, &status); // what does the tag=0 do?
 
-		  for (int ii = start; ii < end; ++ii) {
+      for (int ii = start; ii < end; ++ii) {
         for (int jj = 0; jj < params.nx; ++jj) {
-		  	  for (int kk = 0; kk < NSPEEDS; ++kk) {
-						cells[ii * params.nx + jj].speeds[kk] = buffer[((ii - start) * params.nx + jj) * NSPEEDS + kk]; 
-		  		}	
-		  	}
-		  }
-		}
-	} 
-	free(buffer);
+          for (int kk = 0; kk < NSPEEDS; ++kk) {
+            cells[ii * params.nx + jj].speeds[kk] = buffer[((ii - start) * params.nx + jj) * NSPEEDS + kk]; 
+          }  
+        }
+      }
+    }
+  } 
+  free(buffer);
 
   // write final values and free memory 
-	if (rank == MASTER) {
-  	printf("==done==\n");
-  	printf("Reynolds number:\t\t%.12E\n", calc_reynolds(params, cells, obstacles));
-  	printf("Elapsed time:\t\t\t%.6lf (s)\n", toc - tic);
-  	printf("Elapsed user CPU time:\t\t%.6lf (s)\n", usrtim);
-  	printf("Elapsed system CPU time:\t%.6lf (s)\n", systim);
-  	write_values(params, cells, obstacles, av_vels);
-  	finalise(&params, &cells, &obstacles, &av_vels);
-	}
+  if (rank == MASTER) {
+    printf("==done==\n");
+    printf("Reynolds number:\t\t%.12E\n", calc_reynolds(params, cells, obstacles));
+    printf("Elapsed time:\t\t\t%.6lf (s)\n", toc - tic);
+    printf("Elapsed user CPU time:\t\t%.6lf (s)\n", usrtim);
+    printf("Elapsed system CPU time:\t%.6lf (s)\n", systim);
+    write_values(params, cells, obstacles, av_vels);
+    finalise(&params, &cells, &obstacles, &av_vels);
+  }
 
   // Finalize MPI environment
   MPI_Finalize();
@@ -613,158 +613,158 @@ void usage(const char* exe)
 // =====================
 
 int halo_exchange_read(const t_param params, t_speed* restrict cells, int start, int end) {
-	MPI_Status status;
+  MPI_Status status;
 
-	// buffer to hold the data dependencies to/from neighbouring segments
-	float *sendbuf = (float*)malloc(sizeof(float) * 3 * params.nx);
-	float *recvbuf = (float*)malloc(sizeof(float) * 3 * params.nx);
-	
-	int rank, size;
+  // buffer to hold the data dependencies to/from neighbouring segments
+  float *sendbuf = (float*)malloc(sizeof(float) * 3 * params.nx);
+  float *recvbuf = (float*)malloc(sizeof(float) * 3 * params.nx);
+  
+  int rank, size;
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
   MPI_Comm_size(MPI_COMM_WORLD, &size);
 
-	// rank of neighbouring segments
-	int left  = (rank == 0) ? (size - 1) : (rank - 1);
-	int right = (rank == size - 1) ? (0) : (rank + 1);
+  // rank of neighbouring segments
+  int left  = (rank == 0) ? (size - 1) : (rank - 1);
+  int right = (rank == size - 1) ? (0) : (rank + 1);
 
-	// NOTE: the last visitable row is end-1
+  // NOTE: the last visitable row is end-1
 
   // === NORTH ===
 
-	// populate buffer to send to right (up)
+  // populate buffer to send to right (up)
   for (int jj = 0; jj < params.nx; ++jj) {
     sendbuf[jj * 3    ] = cells[(end - 1) * params.nx + jj].speeds[6];
     sendbuf[jj * 3 + 1] = cells[(end - 1) * params.nx + jj].speeds[2];
     sendbuf[jj * 3 + 2] = cells[(end - 1) * params.nx + jj].speeds[5];
-	}
+  }
 
-	MPI_Sendrecv(sendbuf, 3 * params.nx, MPI_FLOAT, right, 0,
+  MPI_Sendrecv(sendbuf, 3 * params.nx, MPI_FLOAT, right, 0,
                recvbuf, 3 * params.nx, MPI_FLOAT, left,  0,
                MPI_COMM_WORLD, &status);
 
-	// populate southern dependency row
+  // populate southern dependency row
   int y_s = (start == 0) ? (params.ny - 1) : (start - 1);
   for (int jj = 0; jj < params.nx; ++jj) {
-		cells[y_s * params.nx + jj].speeds[6] = recvbuf[jj * 3    ];
-		cells[y_s * params.nx + jj].speeds[2] = recvbuf[jj * 3 + 1];
-		cells[y_s * params.nx + jj].speeds[5] = recvbuf[jj * 3 + 2];
-	}
+    cells[y_s * params.nx + jj].speeds[6] = recvbuf[jj * 3    ];
+    cells[y_s * params.nx + jj].speeds[2] = recvbuf[jj * 3 + 1];
+    cells[y_s * params.nx + jj].speeds[5] = recvbuf[jj * 3 + 2];
+  }
 
   // === SOUTH ===
 
-	// populate buffer to send to left (down)
+  // populate buffer to send to left (down)
   for (int jj = 0; jj < params.nx; ++jj) {
     sendbuf[jj * 3    ] = cells[start * params.nx + jj].speeds[7];
     sendbuf[jj * 3 + 1] = cells[start * params.nx + jj].speeds[4];
     sendbuf[jj * 3 + 2] = cells[start * params.nx + jj].speeds[8];
-	}
+  }
 
-	MPI_Sendrecv(sendbuf, 3 * params.nx, MPI_FLOAT, left,  0,
+  MPI_Sendrecv(sendbuf, 3 * params.nx, MPI_FLOAT, left,  0,
                recvbuf, 3 * params.nx, MPI_FLOAT, right, 0,
                MPI_COMM_WORLD, &status);
 
-	// populate northern dependency row
+  // populate northern dependency row
   int y_n = (end == params.ny) ? (0) : (end); // end may be past row indicies
   for (int jj = 0; jj < params.nx; ++jj) {
-		cells[y_n * params.nx + jj].speeds[7] = recvbuf[jj * 3    ];
-		cells[y_n * params.nx + jj].speeds[4] = recvbuf[jj * 3 + 1];
-		cells[y_n * params.nx + jj].speeds[8] = recvbuf[jj * 3 + 2];
-	}
+    cells[y_n * params.nx + jj].speeds[7] = recvbuf[jj * 3    ];
+    cells[y_n * params.nx + jj].speeds[4] = recvbuf[jj * 3 + 1];
+    cells[y_n * params.nx + jj].speeds[8] = recvbuf[jj * 3 + 2];
+  }
 
-	free(sendbuf);
-	free(recvbuf);
-	
-	return EXIT_SUCCESS;
+  free(sendbuf);
+  free(recvbuf);
+  
+  return EXIT_SUCCESS;
 }
 
 int halo_exchange_write(const t_param params, t_speed* restrict cells, int start, int end) {
-	MPI_Status status;
+  MPI_Status status;
 
-	// buffer to hold the data dependencies to/from neighbouring segments
-	float *sendbuf = (float*)malloc(sizeof(float) * 3 * params.nx);
-	float *recvbuf = (float*)malloc(sizeof(float) * 3 * params.nx);
-	
-	int rank, size;
+  // buffer to hold the data dependencies to/from neighbouring segments
+  float *sendbuf = (float*)malloc(sizeof(float) * 3 * params.nx);
+  float *recvbuf = (float*)malloc(sizeof(float) * 3 * params.nx);
+  
+  int rank, size;
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
   MPI_Comm_size(MPI_COMM_WORLD, &size);
 
-	// rank of neighbouring segments
-	int left  = (rank == 0) ? (size - 1) : (rank - 1);
-	int right = (rank == size - 1) ? (0) : (rank + 1);
+  // rank of neighbouring segments
+  int left  = (rank == 0) ? (size - 1) : (rank - 1);
+  int right = (rank == size - 1) ? (0) : (rank + 1);
 
   // === NORTH ===
 
-	// populate buffer to send to right (up)
+  // populate buffer to send to right (up)
   int y_n = (end == params.ny) ? (0) : (end); // end may be past row indicies
   for (int jj = 0; jj < params.nx; ++jj) {
     sendbuf[jj * 3    ] = cells[y_n * params.nx + jj].speeds[7];
     sendbuf[jj * 3 + 1] = cells[y_n * params.nx + jj].speeds[4];
     sendbuf[jj * 3 + 2] = cells[y_n * params.nx + jj].speeds[8];
-	}
+  }
 
-	MPI_Sendrecv(sendbuf, 3 * params.nx, MPI_FLOAT, right, 0,
+  MPI_Sendrecv(sendbuf, 3 * params.nx, MPI_FLOAT, right, 0,
                recvbuf, 3 * params.nx, MPI_FLOAT, left,  0,
                MPI_COMM_WORLD, &status);
 
-	// populate southern dependency row
+  // populate southern dependency row
   for (int jj = 0; jj < params.nx; ++jj) {
-		cells[start * params.nx + jj].speeds[7] = recvbuf[jj * 3    ];
-		cells[start * params.nx + jj].speeds[4] = recvbuf[jj * 3 + 1];
-		cells[start * params.nx + jj].speeds[8] = recvbuf[jj * 3 + 2];
-	}
+    cells[start * params.nx + jj].speeds[7] = recvbuf[jj * 3    ];
+    cells[start * params.nx + jj].speeds[4] = recvbuf[jj * 3 + 1];
+    cells[start * params.nx + jj].speeds[8] = recvbuf[jj * 3 + 2];
+  }
 
   // === SOUTH ===
 
-	// populate buffer to send to left (down)
+  // populate buffer to send to left (down)
   int y_s = (start == 0) ? (params.ny - 1) : (start - 1);
   for (int jj = 0; jj < params.nx; ++jj) {
     sendbuf[jj * 3    ] = cells[y_s * params.nx + jj].speeds[6];
     sendbuf[jj * 3 + 1] = cells[y_s * params.nx + jj].speeds[2];
     sendbuf[jj * 3 + 2] = cells[y_s * params.nx + jj].speeds[5];
-	}
+  }
 
-	MPI_Sendrecv(sendbuf, 3 * params.nx, MPI_FLOAT, left,  0,
+  MPI_Sendrecv(sendbuf, 3 * params.nx, MPI_FLOAT, left,  0,
                recvbuf, 3 * params.nx, MPI_FLOAT, right, 0,
                MPI_COMM_WORLD, &status);
 
-	// populate northern dependency row
+  // populate northern dependency row
   for (int jj = 0; jj < params.nx; ++jj) {
-		cells[(end - 1) * params.nx + jj].speeds[6] = recvbuf[jj * 3    ];
-		cells[(end - 1) * params.nx + jj].speeds[2] = recvbuf[jj * 3 + 1];
-		cells[(end - 1) * params.nx + jj].speeds[5] = recvbuf[jj * 3 + 2];
-	}
+    cells[(end - 1) * params.nx + jj].speeds[6] = recvbuf[jj * 3    ];
+    cells[(end - 1) * params.nx + jj].speeds[2] = recvbuf[jj * 3 + 1];
+    cells[(end - 1) * params.nx + jj].speeds[5] = recvbuf[jj * 3 + 2];
+  }
 
-	free(sendbuf);
-	free(recvbuf);
-	
-	return EXIT_SUCCESS;
+  free(sendbuf);
+  free(recvbuf);
+  
+  return EXIT_SUCCESS;
 }
 
 int gather_av_velocities(float* restrict av_vels, int tt, float tot_u, int tot_cells) {
-	int rank, size;
+  int rank, size;
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
   MPI_Comm_size(MPI_COMM_WORLD, &size);
 
   // Only the master thread needs a buffer
-	float *recvbuf = NULL;
-	if (rank == MASTER) {
+  float *recvbuf = NULL;
+  if (rank == MASTER) {
     recvbuf = (float*)malloc(sizeof(float) * size);
-	}
+  }
 
-	MPI_Gather(&tot_u,  1, MPI_FLOAT, 
+  MPI_Gather(&tot_u,  1, MPI_FLOAT, 
              recvbuf, 1, MPI_FLOAT,
              MASTER, MPI_COMM_WORLD);
 
-	if (rank == MASTER) {
+  if (rank == MASTER) {
     float sum_tot_u = 0.0f;
     for (int ii = 0; ii < size; ++ii) {
       sum_tot_u += recvbuf[ii];
     }
 
-		av_vels[tt] = sum_tot_u / tot_cells;
-	}
+    av_vels[tt] = sum_tot_u / tot_cells;
+  }
 
-	return EXIT_SUCCESS;
+  return EXIT_SUCCESS;
 }
 
 // ==================
@@ -817,7 +817,7 @@ int d2q9_bgk(const t_param params, const float tot_cells, t_speed* restrict cell
     }
 
     // get dependencies from neighbouring segments
-		halo_exchange_read(params, cells, start, end);
+    halo_exchange_read(params, cells, start, end);
 
     // loop over the cells in the grid
     //#pragma omp for schedule(static)
@@ -916,7 +916,7 @@ int d2q9_bgk(const t_param params, const float tot_cells, t_speed* restrict cell
     }
 
     // give dependencies to neighbouring cells
-		halo_exchange_write(params, cells, start, end);
+    halo_exchange_write(params, cells, start, end);
 
     //#pragma omp for schedule(static)
     for (int jj = 0; jj < params.nx; ++jj)
