@@ -86,6 +86,9 @@ int initialise(const char* paramfile, const char* obstaclefile,
                t_param* params, t_speed** cells_ptr,
                int** obstacles_ptr, float** av_vels_ptr);
 
+// halo exchange only necessary every other timestep
+int haloExchange(const t_param params, t_speed* restrict cells, int start, int end);
+
 // all-in-one
 int d2q9_bgk(const t_param params, const float tot_cells, t_speed* restrict cells, int *restrict obstacles, float* av_vels, int tt, int start, int end);
 
@@ -594,6 +597,73 @@ void usage(const char* exe)
   exit(EXIT_FAILURE);
 }
 
+// =====================
+// === HALO EXCHANGE ===
+// =====================
+
+int haloExchange(const t_param params, t_speed* restrict cells, int start, int end) {
+	MPI_Status status;
+
+	// buffer to hold the data dependencies to/from neighbouring segments
+	float *sendbuf = (float*)malloc(sizeof(float) * 3 * params.nx);
+	float *recvbuf = (float*)malloc(sizeof(float) * 3 * params.nx);
+	
+	int rank, size;
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  MPI_Comm_size(MPI_COMM_WORLD, &size);
+
+	// rank of neighbouring segments
+	int left  = (rank == 0) ? (size - 1) : (rank - 1);
+	int right = (rank == size - 1) ? (0) : (rank + 1);
+
+  // === NORTH ===
+
+	// populate buffer to send to right (up)
+  for (int jj = 0; jj < params.nx; ++jj) {
+    sendbuf[jj * 3    ] = cells[end * params.nx + jj].speeds[6];
+    sendbuf[jj * 3 + 1] = cells[end * params.nx + jj].speeds[2];
+    sendbuf[jj * 3 + 2] = cells[end * params.nx + jj].speeds[5];
+	}
+
+	MPI_Sendrecv(sendbuf, 3 * params.nx, MPI_FLOAT, right, 0,
+               recvbuf, 3 * params.nx, MPI_FLOAT, left,  0,
+               MPI_COMM_WORLD, &status);
+
+	// populate southern dependency row
+  int y_s = (start == 0) ? (params.ny - 1) : (start - 1);
+  for (int jj = 0; jj < params.nx; ++jj) {
+		cells[y_s * params.nx + jj].speeds[6] = recvbuf[jj * 3    ];
+		cells[y_s * params.nx + jj].speeds[2] = recvbuf[jj * 3 + 1];
+		cells[y_s * params.nx + jj].speeds[5] = recvbuf[jj * 3 + 2];
+	}
+
+  // === SOUTH ===
+
+	// populate buffer to send to left (down)
+  for (int jj = 0; jj < params.nx; ++jj) {
+    sendbuf[jj * 3    ] = cells[start * params.nx + jj].speeds[7];
+    sendbuf[jj * 3 + 1] = cells[start * params.nx + jj].speeds[4];
+    sendbuf[jj * 3 + 2] = cells[start * params.nx + jj].speeds[8];
+	}
+
+	MPI_Sendrecv(sendbuf, 3 * params.nx, MPI_FLOAT, left,  0,
+               recvbuf, 3 * params.nx, MPI_FLOAT, right, 0,
+               MPI_COMM_WORLD, &status);
+
+	// populate northern dependency row
+  int y_n = (end == params.ny - 1) ? (0) : (end + 1);
+  for (int jj = 0; jj < params.nx; ++jj) {
+		cells[y_n * params.nx + jj].speeds[7] = recvbuf[jj * 3    ];
+		cells[y_n * params.nx + jj].speeds[4] = recvbuf[jj * 3 + 1];
+		cells[y_n * params.nx + jj].speeds[8] = recvbuf[jj * 3 + 2];
+	}
+
+	free(sendbuf);
+	free(recvbuf);
+	
+	return EXIT_SUCCESS;
+}
+
 // ==================
 // === ALL IN ONE ===
 // ==================
@@ -643,9 +713,12 @@ int d2q9_bgk(const t_param params, const float tot_cells, t_speed* restrict cell
       }
     }
 
+		haloExchange(params, cells, start, end);
+
     // loop over the cells in the grid
     //#pragma omp for schedule(static)
-    for (int ii = 0; ii < params.ny; ++ii)
+    //for (int ii = 0; ii < params.ny; ++ii)
+    for (int ii = start; ii < end; ++ii)
     {
       for (int jj = 0; jj < params.nx; ++jj)
       {
@@ -764,7 +837,8 @@ int d2q9_bgk(const t_param params, const float tot_cells, t_speed* restrict cell
 
     // loop over the cells in the grid
     //#pragma omp for schedule(static)
-    for (int ii = 0; ii < params.ny; ++ii)
+    //for (int ii = 0; ii < params.ny; ++ii)
+    for (int ii = start; ii < end; ++ii)
     {
       for (int jj = 0; jj < params.nx; ++jj)
       {
