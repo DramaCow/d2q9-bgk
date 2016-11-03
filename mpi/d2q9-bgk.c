@@ -161,8 +161,14 @@ int main(int argc, char* argv[])
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
   MPI_Comm_size(MPI_COMM_WORLD, &size);
 
-	int start = rank  * (params.ny / size); // the starting row a node computes
-	int end   = start + (params.ny / size); // the limit row a node computes
+  int remainder = params.ny % size;                    // number of spar lines, each line of such is given to a thread
+	int start = rank  * (params.ny / size)               // the starting row a node computes
+              + (rank < remainder ? rank : remainder); // consider the extra lines given to previous segments
+	int end   = start + (params.ny / size)               // the limit row a node computes
+              + (rank < remainder ? 1 : 0);            // distribute the remaining lines 
+
+	if (rank == MASTER) printf("remainder = %d\n", remainder);
+	printf("rank %d : start = %d, end = %d, rows = %d\n", rank, start, end, end-start);
 
   // iterate for maxIters timesteps 
   gettimeofday(&timstr, NULL);
@@ -198,7 +204,7 @@ int main(int argc, char* argv[])
   timstr = ru.ru_stime;
   systim = timstr.tv_sec + (timstr.tv_usec / 1000000.0);
 
-  float *buffer = (float*)malloc(sizeof(float) * NSPEEDS * (params.nx * (params.ny / size)));
+  float *buffer = (float*)malloc(sizeof(float) * NSPEEDS * (params.nx * (params.ny / size + 1))); // maximum possible size of a segment
 	// Send data to master to be recombined into answer
 	if (rank != MASTER) {
 		// populate buffer
@@ -210,7 +216,7 @@ int main(int argc, char* argv[])
 			}
 		}
  
-    MPI_Ssend(buffer, NSPEEDS * (params.nx * (params.ny / size)), MPI_FLOAT, MASTER, 0, MPI_COMM_WORLD); // what does the tag=0 do?
+    MPI_Ssend(buffer, NSPEEDS * (params.nx * (end - start)), MPI_FLOAT, MASTER, 0, MPI_COMM_WORLD); // what does the tag=0 do?
 	}
 	// Recombine data into answer
 	else {
@@ -218,10 +224,12 @@ int main(int argc, char* argv[])
 
     // receive segment from each node
     for (int source = 1; source < size; ++source) {
-	    MPI_Recv(buffer, NSPEEDS * (params.nx * (params.ny / size)), MPI_FLOAT, source, 0, MPI_COMM_WORLD, &status); // what does the tag=0 do?
+	    int start = source * (params.ny / size)                  // the starting row a node computes
+                  + (source < remainder ? source : remainder); // consider the extra lines given to previous segments
+ 	    int end   = start + (params.ny / size)                   // the limit row a node computes
+                  + (source < remainder ? 1 : 0);              // distribute the remaining lines 
 
-     	int start = source * (params.ny / size);
-	    int end   = start  + (params.ny / size);
+	    MPI_Recv(buffer, NSPEEDS * (params.nx * (end - start)), MPI_FLOAT, source, 0, MPI_COMM_WORLD, &status); // what does the tag=0 do?
 
 		  for (int ii = start; ii < end; ++ii) {
         for (int jj = 0; jj < params.nx; ++jj) {
@@ -656,7 +664,7 @@ int halo_exchange_read(const t_param params, t_speed* restrict cells, int start,
                MPI_COMM_WORLD, &status);
 
 	// populate northern dependency row
-  int y_n = end;
+  int y_n = (end == params.ny) ? (0) : (end); // end may be past row indicies
   for (int jj = 0; jj < params.nx; ++jj) {
 		cells[y_n * params.nx + jj].speeds[7] = recvbuf[jj * 3    ];
 		cells[y_n * params.nx + jj].speeds[4] = recvbuf[jj * 3 + 1];
@@ -687,7 +695,7 @@ int halo_exchange_write(const t_param params, t_speed* restrict cells, int start
   // === NORTH ===
 
 	// populate buffer to send to right (up)
-  int y_n = end; 
+  int y_n = (end == params.ny) ? (0) : (end); // end may be past row indicies
   for (int jj = 0; jj < params.nx; ++jj) {
     sendbuf[jj * 3    ] = cells[y_n * params.nx + jj].speeds[7];
     sendbuf[jj * 3 + 1] = cells[y_n * params.nx + jj].speeds[4];
