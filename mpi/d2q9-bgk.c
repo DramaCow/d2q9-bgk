@@ -87,7 +87,10 @@ int initialise(const char* paramfile, const char* obstaclefile,
                int** obstacles_ptr, float** av_vels_ptr);
 
 // halo exchange only necessary every other timestep
-int haloExchange(const t_param params, t_speed* restrict cells, int start, int end);
+int halo_exchange_read(const t_param params, t_speed* restrict cells, int start, int end);
+int halo_exchange_write(const t_param params, t_speed* restrict cells, int start, int end);
+
+int gather_av_velocities(float* restrict av_vels, int tt, float tot_u, int tot_cells);
 
 // all-in-one
 int d2q9_bgk(const t_param params, const float tot_cells, t_speed* restrict cells, int *restrict obstacles, float* av_vels, int tt, int start, int end);
@@ -230,7 +233,7 @@ int main(int argc, char* argv[])
 		}
 	} 
 	free(buffer);
-	
+
   // write final values and free memory 
 	if (rank == MASTER) {
   	printf("==done==\n");
@@ -601,7 +604,7 @@ void usage(const char* exe)
 // === HALO EXCHANGE ===
 // =====================
 
-int haloExchange(const t_param params, t_speed* restrict cells, int start, int end) {
+int halo_exchange_read(const t_param params, t_speed* restrict cells, int start, int end) {
 	MPI_Status status;
 
 	// buffer to hold the data dependencies to/from neighbouring segments
@@ -616,13 +619,15 @@ int haloExchange(const t_param params, t_speed* restrict cells, int start, int e
 	int left  = (rank == 0) ? (size - 1) : (rank - 1);
 	int right = (rank == size - 1) ? (0) : (rank + 1);
 
+	// NOTE: the last visitable row is end-1
+
   // === NORTH ===
 
 	// populate buffer to send to right (up)
   for (int jj = 0; jj < params.nx; ++jj) {
-    sendbuf[jj * 3    ] = cells[end * params.nx + jj].speeds[6];
-    sendbuf[jj * 3 + 1] = cells[end * params.nx + jj].speeds[2];
-    sendbuf[jj * 3 + 2] = cells[end * params.nx + jj].speeds[5];
+    sendbuf[jj * 3    ] = cells[(end - 1) * params.nx + jj].speeds[6];
+    sendbuf[jj * 3 + 1] = cells[(end - 1) * params.nx + jj].speeds[2];
+    sendbuf[jj * 3 + 2] = cells[(end - 1) * params.nx + jj].speeds[5];
 	}
 
 	MPI_Sendrecv(sendbuf, 3 * params.nx, MPI_FLOAT, right, 0,
@@ -651,7 +656,7 @@ int haloExchange(const t_param params, t_speed* restrict cells, int start, int e
                MPI_COMM_WORLD, &status);
 
 	// populate northern dependency row
-  int y_n = (end == params.ny - 1) ? (0) : (end + 1);
+  int y_n = end;
   for (int jj = 0; jj < params.nx; ++jj) {
 		cells[y_n * params.nx + jj].speeds[7] = recvbuf[jj * 3    ];
 		cells[y_n * params.nx + jj].speeds[4] = recvbuf[jj * 3 + 1];
@@ -661,6 +666,96 @@ int haloExchange(const t_param params, t_speed* restrict cells, int start, int e
 	free(sendbuf);
 	free(recvbuf);
 	
+	return EXIT_SUCCESS;
+}
+
+int halo_exchange_write(const t_param params, t_speed* restrict cells, int start, int end) {
+	MPI_Status status;
+
+	// buffer to hold the data dependencies to/from neighbouring segments
+	float *sendbuf = (float*)malloc(sizeof(float) * 3 * params.nx);
+	float *recvbuf = (float*)malloc(sizeof(float) * 3 * params.nx);
+	
+	int rank, size;
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  MPI_Comm_size(MPI_COMM_WORLD, &size);
+
+	// rank of neighbouring segments
+	int left  = (rank == 0) ? (size - 1) : (rank - 1);
+	int right = (rank == size - 1) ? (0) : (rank + 1);
+
+  // === NORTH ===
+
+	// populate buffer to send to right (up)
+  int y_n = end; 
+  for (int jj = 0; jj < params.nx; ++jj) {
+    sendbuf[jj * 3    ] = cells[y_n * params.nx + jj].speeds[7];
+    sendbuf[jj * 3 + 1] = cells[y_n * params.nx + jj].speeds[4];
+    sendbuf[jj * 3 + 2] = cells[y_n * params.nx + jj].speeds[8];
+	}
+
+	MPI_Sendrecv(sendbuf, 3 * params.nx, MPI_FLOAT, right, 0,
+               recvbuf, 3 * params.nx, MPI_FLOAT, left,  0,
+               MPI_COMM_WORLD, &status);
+
+	// populate southern dependency row
+  for (int jj = 0; jj < params.nx; ++jj) {
+		cells[start * params.nx + jj].speeds[7] = recvbuf[jj * 3    ];
+		cells[start * params.nx + jj].speeds[4] = recvbuf[jj * 3 + 1];
+		cells[start * params.nx + jj].speeds[8] = recvbuf[jj * 3 + 2];
+	}
+
+  // === SOUTH ===
+
+	// populate buffer to send to left (down)
+  int y_s = (start == 0) ? (params.ny - 1) : (start - 1);
+  for (int jj = 0; jj < params.nx; ++jj) {
+    sendbuf[jj * 3    ] = cells[y_s * params.nx + jj].speeds[6];
+    sendbuf[jj * 3 + 1] = cells[y_s * params.nx + jj].speeds[2];
+    sendbuf[jj * 3 + 2] = cells[y_s * params.nx + jj].speeds[5];
+	}
+
+	MPI_Sendrecv(sendbuf, 3 * params.nx, MPI_FLOAT, left,  0,
+               recvbuf, 3 * params.nx, MPI_FLOAT, right, 0,
+               MPI_COMM_WORLD, &status);
+
+	// populate northern dependency row
+  for (int jj = 0; jj < params.nx; ++jj) {
+		cells[(end - 1) * params.nx + jj].speeds[6] = recvbuf[jj * 3    ];
+		cells[(end - 1) * params.nx + jj].speeds[2] = recvbuf[jj * 3 + 1];
+		cells[(end - 1) * params.nx + jj].speeds[5] = recvbuf[jj * 3 + 2];
+	}
+
+	free(sendbuf);
+	free(recvbuf);
+	
+	return EXIT_SUCCESS;
+}
+
+int gather_av_velocities(float* restrict av_vels, int tt, float tot_u, int tot_cells) {
+	int rank, size;
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  MPI_Comm_size(MPI_COMM_WORLD, &size);
+
+  // Only the master thread needs a buffer
+	float *recvbuf = NULL;
+	if (rank == MASTER) {
+    recvbuf = (float*)malloc(sizeof(float) * size);
+	}
+
+	MPI_Gather(&tot_u,  1, MPI_FLOAT, 
+             recvbuf, 1, MPI_FLOAT,
+             MASTER, MPI_COMM_WORLD);
+
+	if (rank == MASTER) {
+    float sum_tot_u = 0.0f;
+    for (int ii = 0; ii < size; ++ii) {
+      sum_tot_u += recvbuf[ii];
+    }
+
+		av_vels[tt] = sum_tot_u / tot_cells;
+	}
+
 	return EXIT_SUCCESS;
 }
 
@@ -713,7 +808,8 @@ int d2q9_bgk(const t_param params, const float tot_cells, t_speed* restrict cell
       }
     }
 
-		haloExchange(params, cells, start, end);
+    // get dependencies from neighbouring segments
+		halo_exchange_read(params, cells, start, end);
 
     // loop over the cells in the grid
     //#pragma omp for schedule(static)
@@ -810,6 +906,9 @@ int d2q9_bgk(const t_param params, const float tot_cells, t_speed* restrict cell
         }
       }
     }
+
+    // give dependencies to neighbouring cells
+		halo_exchange_write(params, cells, start, end);
 
     //#pragma omp for schedule(static)
     for (int jj = 0; jj < params.nx; ++jj)
@@ -915,8 +1014,11 @@ int d2q9_bgk(const t_param params, const float tot_cells, t_speed* restrict cell
     }
   }
 
-  av_vels[tt]   = tot_u_t1 / tot_cells;
-  av_vels[tt+1] = tot_u_t2 / tot_cells;
+  //av_vels[tt]   = tot_u_t1 / tot_cells;
+  //av_vels[tt+1] = tot_u_t2 / tot_cells;
+  
+  gather_av_velocities(av_vels, tt    , tot_u_t1, tot_cells);
+  gather_av_velocities(av_vels, tt + 1, tot_u_t2, tot_cells);
 
   return EXIT_SUCCESS;
 }

@@ -1,0 +1,6 @@
+
+d2q9-bgk:76651 terminated with signal 11 at PC=4034a8 SP=7fffffffd330.  Backtrace:
+./d2q9-bgk(d2q9_bgk+0xe68)[0x4034a8]
+./d2q9-bgk(main+0x1e7)[0x4037d7]
+/lib64/libc.so.6(__libc_start_main+0xfd)[0x2aaaabf5dd5d]
+./d2q9-bgk[0x401189]
