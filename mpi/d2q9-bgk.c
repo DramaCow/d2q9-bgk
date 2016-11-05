@@ -204,7 +204,9 @@ int main(int argc, char* argv[])
   timstr = ru.ru_stime;
   systim = timstr.tv_sec + (timstr.tv_usec / 1000000.0);
 
-  float *buffer = (float*)malloc(sizeof(float) * NSPEEDS * (params.nx * (params.ny / size + 1))); // maximum possible size of a segment
+  // allocate buffer - note, if there exists a remainder, then the master thread will receive one of the extra lines,
+  //                 - and as such the buffer allocated will be the maximum possible segment size for any thread
+  float *buffer = (float*)malloc(sizeof(float) * NSPEEDS * (params.nx * (end - start))); // maximum possible size of a segment
   // Send data to master to be recombined into answer
   if (rank != MASTER) {
     // populate buffer
@@ -226,7 +228,7 @@ int main(int argc, char* argv[])
     for (int source = 1; source < size; ++source) {
       int start = source * (params.ny / size)                  // the starting row a node computes
                   + (source < remainder ? source : remainder); // consider the extra lines given to previous segments
-       int end   = start + (params.ny / size)                   // the limit row a node computes
+      int end   = start + (params.ny / size)                   // the limit row a node computes
                   + (source < remainder ? 1 : 0);              // distribute the remaining lines 
 
       MPI_Recv(buffer, NSPEEDS * (params.nx * (end - start)), MPI_FLOAT, source, 0, MPI_COMM_WORLD, &status); // what does the tag=0 do?

@@ -5,7 +5,7 @@
 #PBS -o d2q9-bgk.out
 #PBS -q teaching
 #PBS -l epilogue=~ggdagw/epilogue.sh
-#PBS -l nodes=1:ppn=16,walltime=00:05:00
+#PBS -l nodes=1:ppn=15,walltime=00:05:00
 
 #! Mail to user if job aborts
 #PBS -m a
@@ -14,7 +14,7 @@
 application="./d2q9-bgk"
 
 #! Run options for the application
-options="input_128x128.params obstacles_128x128.dat"
+options="input_256x256.params obstacles_256x256.dat"
 
 ###############################################################
 ### You should not have to change anything below this line ####
