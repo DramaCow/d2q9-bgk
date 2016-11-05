@@ -84,7 +84,8 @@ typedef struct
 // load params, allocate memory, load obstacles & initialise fluid particle densities 
 int initialise(const char* paramfile, const char* obstaclefile,
                t_param* params, t_speed** cells_ptr,
-               int** obstacles_ptr, float** av_vels_ptr);
+               int** obstacles_ptr, float** av_vels_ptr,
+               int rank, int size);
 
 // halo exchange only necessary every other timestep
 int halo_exchange_read(const t_param params, t_speed* restrict cells, int start, int end);
@@ -94,9 +95,6 @@ int gather_av_velocities(float* restrict av_vels, int tt, float tot_u, int tot_c
 
 // all-in-one
 int d2q9_bgk(const t_param params, const float tot_cells, t_speed* restrict cells, int *restrict obstacles, float* av_vels, int tt, int start, int end);
-
-// compute average velocity 
-float av_velocity(const t_param params, t_speed* restrict cells, int *restrict obstacles);
 
 int write_values(const t_param params, t_speed* cells, int *obstacles, float *av_vels);
 
@@ -109,7 +107,7 @@ int finalise(const t_param* params, t_speed** cells_ptr,
 float total_density(const t_param params, t_speed* cells);
 
 // calculate Reynolds number 
-float calc_reynolds(const t_param params, t_speed* cells, int* obstacles);
+float calc_reynolds(const t_param params, float average_velocity);
 
 // utility functions 
 void die(const char* message, const int line, const char* file);
@@ -143,15 +141,11 @@ int main(int argc, char* argv[])
     obstaclefile = argv[2];
   }
 
-  // initialise our data structures and load values from file 
-  initialise(paramfile, obstaclefile, &params, &cells, &obstacles, &av_vels);
-  for (int ii = 0; ii < params.nx * params.ny; ii++) if (!obstacles[ii]) ++tot_cells;
-
   // Initialize MPI environment.
   MPI_Init(&argc, &argv);
 
-  int flag;
   // Check initialization was successful.
+  int flag;
   MPI_Initialized(&flag);
   if(flag != 1) {
     MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
@@ -160,6 +154,10 @@ int main(int argc, char* argv[])
   int rank, size;
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
   MPI_Comm_size(MPI_COMM_WORLD, &size);
+
+  // initialise our data structures and load values from file 
+  initialise(paramfile, obstaclefile, &params, &cells, &obstacles, &av_vels, rank, size);
+  for (int ii = 0; ii < params.nx * params.ny; ii++) if (!obstacles[ii]) ++tot_cells;
 
   int remainder = params.ny % size;                    // number of spar lines, each line of such is given to a thread
   int start = rank  * (params.ny / size)               // the starting row a node computes
@@ -247,7 +245,7 @@ int main(int argc, char* argv[])
   // write final values and free memory 
   if (rank == MASTER) {
     printf("==done==\n");
-    printf("Reynolds number:\t\t%.12E\n", calc_reynolds(params, cells, obstacles));
+    printf("Reynolds number:\t\t%.12E\n", calc_reynolds(params, av_vels[params.maxIters - 1]));
     printf("Elapsed time:\t\t\t%.6lf (s)\n", toc - tic);
     printf("Elapsed user CPU time:\t\t%.6lf (s)\n", usrtim);
     printf("Elapsed system CPU time:\t%.6lf (s)\n", systim);
@@ -266,68 +264,14 @@ int main(int argc, char* argv[])
   return EXIT_SUCCESS;
 }
 
-// ========================
-// === AVERAGE VELOCITY ===
-// ========================
-
-float av_velocity(const t_param params, t_speed* restrict cells, int *restrict obstacles)
-{
-  int   tot_cells = 0;  // no. of cells used in calculation
-  float tot_u = 0.0f;    // accumulated magnitudes of velocity for each cell
-
-  // loop over all non-blocked cells 
-  //#pragma omp parallel for default(none) shared(cells,obstacles) schedule(static) reduction(+:tot_cells,tot_u)
-  for (int ii = 0; ii < params.ny; ii++)
-  {
-    for (int jj = 0; jj < params.nx; jj++)
-    {
-      // ignore occupied cells 
-      if (!obstacles[ii * params.nx + jj])
-      {
-        // local density total 
-        float local_density = 0.0f;
-
-        for (int kk = 0; kk < NSPEEDS; kk++)
-        {
-          local_density += cells[ii * params.nx + jj].speeds[kk];
-        }
-
-        // x-component of velocity 
-        float u_x = (
-                      + cells[ii * params.nx + jj].speeds[1]
-                      + cells[ii * params.nx + jj].speeds[5]
-                      + cells[ii * params.nx + jj].speeds[8]
-                      - cells[ii * params.nx + jj].speeds[3]
-                      - cells[ii * params.nx + jj].speeds[6]
-                      - cells[ii * params.nx + jj].speeds[7]
-                    ) / local_density;
-        // compute y velocity component 
-        float u_y = (
-                      + cells[ii * params.nx + jj].speeds[2]
-                      + cells[ii * params.nx + jj].speeds[5]
-                      + cells[ii * params.nx + jj].speeds[6]
-                      - cells[ii * params.nx + jj].speeds[4]
-                      - cells[ii * params.nx + jj].speeds[7]
-                      - cells[ii * params.nx + jj].speeds[8]
-                    ) / local_density;
-        // accumulate the norm of x- and y- velocity components 
-        tot_u += sqrtf((u_x * u_x) + (u_y * u_y));
-        // increase counter of inspected cells 
-        tot_cells++;
-      }
-    }
-  }
-
-  return tot_u / (float)tot_cells;
-}
-
 // =======================
 // === OTHER FUNCTIONS ===
 // =======================
 
 int initialise(const char* paramfile, const char* obstaclefile,
                t_param* params, t_speed** cells_ptr,
-               int** obstacles_ptr, float** av_vels_ptr)
+               int** obstacles_ptr, float** av_vels_ptr,
+               int rank, int size)
 {
   char   message[1024];  // message buffer 
   FILE*   fp;            // file pointer 
@@ -337,7 +281,6 @@ int initialise(const char* paramfile, const char* obstaclefile,
 
   // open the parameter file 
   fp = fopen(paramfile, "r");
-
   if (fp == NULL)
   {
     sprintf(message, "could not open input parameter file: %s", paramfile);
@@ -346,67 +289,55 @@ int initialise(const char* paramfile, const char* obstaclefile,
 
   // read in the parameter values 
   retval = fscanf(fp, "%d\n", &(params->nx));
-
   if (retval != 1) die("could not read param file: nx", __LINE__, __FILE__);
 
   retval = fscanf(fp, "%d\n", &(params->ny));
-
   if (retval != 1) die("could not read param file: ny", __LINE__, __FILE__);
 
   retval = fscanf(fp, "%d\n", &(params->maxIters));
-
   if (retval != 1) die("could not read param file: maxIters", __LINE__, __FILE__);
 
   retval = fscanf(fp, "%d\n", &(params->reynolds_dim));
-
   if (retval != 1) die("could not read param file: reynolds_dim", __LINE__, __FILE__);
 
   retval = fscanf(fp, "%f\n", &(params->density));
-
   if (retval != 1) die("could not read param file: density", __LINE__, __FILE__);
 
   retval = fscanf(fp, "%f\n", &(params->accel));
-
   if (retval != 1) die("could not read param file: accel", __LINE__, __FILE__);
 
   retval = fscanf(fp, "%f\n", &(params->omega));
-
   if (retval != 1) die("could not read param file: omega", __LINE__, __FILE__);
 
   // and close up the file 
   fclose(fp);
 
-  // Allocate memory.
-  //
-  // Remember C is pass-by-value, so we need to
-  // pass pointers into the initialise function.
-  //
-  // NB we are allocating a 1D array, so that the
-  // memory will be contiguous.  We still want to
-  // index this memory as if it were a (row major
-  // ordered) 2D array, however.  We will perform
-  // some arithmetic using the row and column
-  // coordinates, inside the square brackets, when
-  // we want to access elements of this array.
-  //
-  // Note also that we are using a structure to
-  // hold an array of 'speeds'.  We will allocate
-  // a 1D array of these structs.
+  // === GET NUMBER OF ROWS FOR PARTICULAR THREAD ===
+
+  int remainder = params->ny % size;                    // number of spar lines, each line of such is given to a thread
+  int start  = rank  * (params->ny / size)              // the starting row a node computes
+               + (rank < remainder ? rank : remainder); // consider the extra lines given to previous segments
+  int length = (params->ny / size)                      // the limit row a node computes
+               + (rank < remainder ? 1 : 0);            // distribute the remaining lines 
+
+	printf("In init: %d, %d, %d\n", start, start+length, rank);
+
+	// === ALLOCATE MEMORY ===
 
   // main grid 
   *cells_ptr = (t_speed*)malloc(sizeof(t_speed) * (params->ny * params->nx));
-
   if (*cells_ptr == NULL) die("cannot allocate memory for cells", __LINE__, __FILE__);
 
   // the map of obstacles 
   *obstacles_ptr = malloc(sizeof(int) * (params->ny * params->nx));
-
   if (*obstacles_ptr == NULL) die("cannot allocate column memory for obstacles", __LINE__, __FILE__);
 
+	// === INITIALISE CELL GRID ===
+
   // initialise densities 
-  float w0 = params->density * 4.0f / 9.0f;
-  float w1 = params->density      / 9.0f;
-  float w2 = params->density      / 36.0f;
+  float w0 = params->density * 4.0f / 9.0f ;
+  float w1 = params->density        / 9.0f ;
+  float w2 = params->density        / 36.0f;
 
   for (int ii = 0; ii < params->ny; ii++)
   {
@@ -427,6 +358,8 @@ int initialise(const char* paramfile, const char* obstaclefile,
     }
   }
 
+  // === INITIALISE OBSTACLE GRID ===
+
   // first set all cells in obstacle array to zero 
   for (int ii = 0; ii < params->ny; ii++)
   {
@@ -438,7 +371,6 @@ int initialise(const char* paramfile, const char* obstaclefile,
 
   // open the obstacle data file 
   fp = fopen(obstaclefile, "r");
-
   if (fp == NULL)
   {
     sprintf(message, "could not open input obstacles file: %s", obstaclefile);
@@ -450,15 +382,14 @@ int initialise(const char* paramfile, const char* obstaclefile,
   {
     // some checks 
     if (retval != 3) die("expected 3 values per line in obstacle file", __LINE__, __FILE__);
-
     if (xx < 0 || xx > params->nx - 1) die("obstacle x-coord out of range", __LINE__, __FILE__);
-
     if (yy < 0 || yy > params->ny - 1) die("obstacle y-coord out of range", __LINE__, __FILE__);
-
     if (blocked != 1) die("obstacle blocked value should be 1", __LINE__, __FILE__);
 
-    // assign to array 
-    (*obstacles_ptr)[yy * params->nx + xx] = blocked;
+    // assign to array (only if within assigned region)
+    if ((start <= yy && yy < start + length) || rank == MASTER) {
+      (*obstacles_ptr)[yy * params->nx + xx] = blocked;
+    }
   }
 
   // and close the file 
@@ -488,10 +419,10 @@ int finalise(const t_param* params, t_speed** cells_ptr,
 }
 
 
-float calc_reynolds(const t_param params, t_speed* cells, int* obstacles)
+float calc_reynolds(const t_param params, float average_velocity)
 {
   const float viscosity = 1.0f / 6.0f * (2.0f / params.omega - 1.0f);
-  return av_velocity(params, cells, obstacles) * params.reynolds_dim / viscosity;
+  return average_velocity * params.reynolds_dim / viscosity;
 }
 
 float total_density(const t_param params, t_speed* cells)
