@@ -710,11 +710,12 @@ int halo_exchange_write(const t_param params, t_speed* restrict cells, int lengt
   return EXIT_SUCCESS;
 }
 
-int gather_av_velocities(float* restrict av_vels, int tt, float tot_u, int tot_cells) {
+int gather_av_velocities(float* restrict av_vels, int tt, float local_tot_u, int tot_cells) {
   int rank, size;
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
   MPI_Comm_size(MPI_COMM_WORLD, &size);
 
+  /*
   // Only the master thread needs a buffer
   float *recvbuf = NULL;
   if (rank == MASTER) {
@@ -724,7 +725,7 @@ int gather_av_velocities(float* restrict av_vels, int tt, float tot_u, int tot_c
   MPI_Gather(&tot_u,  1, MPI_FLOAT, 
              recvbuf, 1, MPI_FLOAT,
              MASTER, MPI_COMM_WORLD);
-
+  
   if (rank == MASTER) {
     float sum_tot_u = 0.0f;
     for (int ii = 0; ii < size; ++ii) {
@@ -733,6 +734,11 @@ int gather_av_velocities(float* restrict av_vels, int tt, float tot_u, int tot_c
 
     av_vels[tt] = sum_tot_u / tot_cells;
   }
+  */
+
+  float tot_u;
+  MPI_Reduce(&local_tot_u, &tot_u, 1, MPI_FLOAT, MPI_SUM, MASTER, MPI_COMM_WORLD);
+  av_vels[tt] = tot_u / tot_cells;
 
   return EXIT_SUCCESS;
 }
@@ -938,9 +944,6 @@ int d2q9_bgk(const t_param params, const float tot_cells, t_speed* restrict cell
       }
     }
   }
-
-  //av_vels[tt]   = tot_u_t1 / tot_cells;
-  //av_vels[tt+1] = tot_u_t2 / tot_cells;
   
   gather_av_velocities(av_vels, tt    , tot_u_t1, tot_cells);
   gather_av_velocities(av_vels, tt + 1, tot_u_t2, tot_cells);
@@ -1200,9 +1203,6 @@ int d2q9_bgk_accelerate_flow(const t_param params, const float tot_cells,
       }
     }
   }
-
-  //av_vels[tt]   = tot_u_t1 / tot_cells;
-  //av_vels[tt+1] = tot_u_t2 / tot_cells;
   
   gather_av_velocities(av_vels, tt    , tot_u_t1, tot_cells);
   gather_av_velocities(av_vels, tt + 1, tot_u_t2, tot_cells);
