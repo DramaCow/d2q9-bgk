@@ -84,8 +84,7 @@ typedef struct
 // load params, allocate memory, load obstacles & initialise fluid particle densities 
 int initialise(const char* paramfile, const char* obstaclefile,
                t_param* params, t_speed** cells_ptr,
-               int** obstacles_ptr, float** av_vels_ptr,
-               int rank, int size);
+               int** obstacles_ptr, float** av_vels_ptr);
 
 // halo exchange only necessary every other timestep
 int halo_exchange_read(const t_param params, t_speed* restrict cells, int start, int end);
@@ -151,22 +150,26 @@ int main(int argc, char* argv[])
     MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
   }
 
+  // initialise our data structures and load values from file 
+  initialise(paramfile, obstaclefile, &params, &cells, &obstacles, &av_vels);
+
+  // get process information
   int rank, size;
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
   MPI_Comm_size(MPI_COMM_WORLD, &size);
 
-  // initialise our data structures and load values from file 
-  initialise(paramfile, obstaclefile, &params, &cells, &obstacles, &av_vels, rank, size);
-  for (int ii = 0; ii < params.nx * params.ny; ii++) if (!obstacles[ii]) ++tot_cells;
+  int remainder = params.ny % size;                     // number of spar lines, each line of such is given to a thread
+  int start  = rank  * (params.ny / size)               // the starting row a node computes
+               + (rank < remainder ? rank : remainder); // consider the extra lines given to previous segments
+  int length = (params.ny / size)                       // the limit row a node computes
+               + (rank < remainder ? 1 : 0);            // distribute the remaining lines 
 
-  int remainder = params.ny % size;                    // number of spar lines, each line of such is given to a thread
-  int start = rank  * (params.ny / size)               // the starting row a node computes
-              + (rank < remainder ? rank : remainder); // consider the extra lines given to previous segments
-  int end   = start + (params.ny / size)               // the limit row a node computes
-              + (rank < remainder ? 1 : 0);            // distribute the remaining lines 
-
-  if (rank == MASTER) printf("remainder = %d\n", remainder);
-  printf("rank %d : start = %d, end = %d, rows = %d\n", rank, start, end, end-start);
+  // pre-count number of non-obstacles
+  float local_tot_cells = 0.0f;
+  for (int ii = start * params.nx; ii < (start + length) * params.nx; ii++) 
+    if (!obstacles[ii]) 
+      ++local_tot_cells;
+  MPI_Reduce(&local_tot_cells, &tot_cells, 1, MPI_FLOAT, MPI_SUM, MASTER, MPI_COMM_WORLD);
 
   // iterate for maxIters timesteps 
   gettimeofday(&timstr, NULL);
@@ -183,7 +186,7 @@ int main(int argc, char* argv[])
   //       I've ommitted these due to time constraints under the assumption that (for now)
   //       inputs will have an even number of max iterations.
   for (int tt = 0; tt < params.maxIters; tt+=2) {
-    d2q9_bgk(params, tot_cells, cells, obstacles, av_vels, tt, start, end);
+    d2q9_bgk(params, tot_cells, cells, obstacles, av_vels, tt, start, start + length);
 #ifdef DEBUG
     printf("==timestep: %d==\n", tt);
     printf("av velocity: %.12E\n", av_vels[tt]);
@@ -204,11 +207,11 @@ int main(int argc, char* argv[])
 
   // allocate buffer - note, if there exists a remainder, then the master thread will receive one of the extra lines,
   //                 - and as such the buffer allocated will be the maximum possible segment size for any thread
-  float *buffer = (float*)malloc(sizeof(float) * NSPEEDS * (params.nx * (end - start))); // maximum possible size of a segment
+  float *buffer = (float*)malloc(sizeof(float) * NSPEEDS * params.nx * length); // maximum possible size of a segment
   // Send data to master to be recombined into answer
   if (rank != MASTER) {
     // populate buffer
-    for (int ii = start; ii < end; ++ii) {
+    for (int ii = start; ii < start + length; ++ii) {
       for (int jj = 0; jj < params.nx; ++jj) {
         for (int kk = 0; kk < NSPEEDS; ++kk) {
           buffer[((ii - start) * params.nx + jj) * NSPEEDS + kk] = cells[ii * params.nx + jj].speeds[kk];
@@ -216,7 +219,7 @@ int main(int argc, char* argv[])
       }
     }
  
-    MPI_Ssend(buffer, NSPEEDS * (params.nx * (end - start)), MPI_FLOAT, MASTER, 0, MPI_COMM_WORLD); // what does the tag=0 do?
+    MPI_Ssend(buffer, NSPEEDS * params.nx * length, MPI_FLOAT, MASTER, 0, MPI_COMM_WORLD); // what does the tag=0 do?
   }
   // Recombine data into answer
   else {
@@ -224,14 +227,14 @@ int main(int argc, char* argv[])
 
     // receive segment from each node
     for (int source = 1; source < size; ++source) {
-      int start = source * (params.ny / size)                  // the starting row a node computes
-                  + (source < remainder ? source : remainder); // consider the extra lines given to previous segments
-      int end   = start + (params.ny / size)                   // the limit row a node computes
-                  + (source < remainder ? 1 : 0);              // distribute the remaining lines 
+      int start  = source * (params.ny / size)                  // the starting row a node computes
+                   + (source < remainder ? source : remainder); // consider the extra lines given to previous segments
+      int length = (params.ny / size)                           // the limit row a node computes
+                   + (source < remainder ? 1 : 0);              // distribute the remaining lines 
 
-      MPI_Recv(buffer, NSPEEDS * (params.nx * (end - start)), MPI_FLOAT, source, 0, MPI_COMM_WORLD, &status); // what does the tag=0 do?
+      MPI_Recv(buffer, NSPEEDS * params.nx * length, MPI_FLOAT, source, 0, MPI_COMM_WORLD, &status); // what does the tag=0 do?
 
-      for (int ii = start; ii < end; ++ii) {
+      for (int ii = start; ii < start + length; ++ii) {
         for (int jj = 0; jj < params.nx; ++jj) {
           for (int kk = 0; kk < NSPEEDS; ++kk) {
             cells[ii * params.nx + jj].speeds[kk] = buffer[((ii - start) * params.nx + jj) * NSPEEDS + kk]; 
@@ -250,8 +253,8 @@ int main(int argc, char* argv[])
     printf("Elapsed user CPU time:\t\t%.6lf (s)\n", usrtim);
     printf("Elapsed system CPU time:\t%.6lf (s)\n", systim);
     write_values(params, cells, obstacles, av_vels);
-    finalise(&params, &cells, &obstacles, &av_vels);
   }
+  finalise(&params, &cells, &obstacles, &av_vels);
 
   // Finalize MPI environment
   MPI_Finalize();
@@ -270,8 +273,7 @@ int main(int argc, char* argv[])
 
 int initialise(const char* paramfile, const char* obstaclefile,
                t_param* params, t_speed** cells_ptr,
-               int** obstacles_ptr, float** av_vels_ptr,
-               int rank, int size)
+               int** obstacles_ptr, float** av_vels_ptr)
 {
   char   message[1024];  // message buffer 
   FILE*   fp;            // file pointer 
@@ -312,15 +314,16 @@ int initialise(const char* paramfile, const char* obstaclefile,
   // and close up the file 
   fclose(fp);
 
-  // === GET NUMBER OF ROWS FOR PARTICULAR THREAD ===
+  // === GET PROCESS INFORMATION ===
+  int rank, size;
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  MPI_Comm_size(MPI_COMM_WORLD, &size);
 
   int remainder = params->ny % size;                    // number of spar lines, each line of such is given to a thread
   int start  = rank  * (params->ny / size)              // the starting row a node computes
                + (rank < remainder ? rank : remainder); // consider the extra lines given to previous segments
   int length = (params->ny / size)                      // the limit row a node computes
                + (rank < remainder ? 1 : 0);            // distribute the remaining lines 
-
-	printf("In init: %d, %d, %d\n", start, start+length, rank);
 
 	// === ALLOCATE MEMORY ===
 
