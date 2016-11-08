@@ -238,10 +238,13 @@ int main(int argc, char* argv[])
 
   // Send data to master to be recombined into answer
   if (rank != MASTER) {
-    MPI_Ssend(buffer, NSPEEDS * params.nx * length, MPI_FLOAT, MASTER, 0, MPI_COMM_WORLD); // what does the tag=0 do?
+    MPI_Ssend(buffer, NSPEEDS * params.nx * length, MPI_FLOAT, MASTER, 0, MPI_COMM_WORLD);
   }
   // Recombine data into answer
   else {
+    free(cells); 
+    cells = (t_speed*)malloc(sizeof(t_speed) * (params.ny * params.nx));
+
     MPI_Status status;
 
     // receive segment from each node
@@ -251,9 +254,7 @@ int main(int argc, char* argv[])
       int length = (params.ny / size)                           // the limit row a node computes
                    + (source < remainder ? 1 : 0);              // distribute the remaining lines 
 
-      if (source != 0) {
-        MPI_Recv(buffer, NSPEEDS * params.nx * length, MPI_FLOAT, source, 0, MPI_COMM_WORLD, &status); // what does the tag=0 do?
-      }
+      if (source != 0) MPI_Recv(buffer, NSPEEDS * params.nx * length, MPI_FLOAT, source, 0, MPI_COMM_WORLD, &status);
 
       for (int ii = start; ii < start + length; ++ii) {
         for (int jj = 0; jj < params.nx; ++jj) {
@@ -349,17 +350,13 @@ int initialise(const char* paramfile, const char* obstaclefile,
 	// === ALLOCATE MEMORY ===
 
   // main grid 
-  if (rank == MASTER)
-    *cells_ptr = (t_speed*)malloc(sizeof(t_speed) * (params->ny * params->nx));
-  else
-    *cells_ptr = (t_speed*)malloc(sizeof(t_speed) * (params->nx * (length + 2))); // +2 for halos
+  *cells_ptr = (t_speed*)malloc(sizeof(t_speed) * (params->nx * (length + 2))); // +2 for halos
   if (*cells_ptr == NULL) die("cannot allocate memory for cells", __LINE__, __FILE__);
 
   // the map of obstacles 
-  if (rank == MASTER)
-    *obstacles_ptr = (int*)malloc(sizeof(int) * (params->ny * params->nx));
-  else
-    *obstacles_ptr = (int*)malloc(sizeof(int) * (params->nx * length)); // don't need halos for obstacles
+  *obstacles_ptr = (rank == MASTER) ?
+                   (int*)malloc(sizeof(int) * (params->ny * params->nx)) :
+                   (int*)malloc(sizeof(int) * (params->nx * length)); // don't need halos for obstacles
   if (*obstacles_ptr == NULL) die("cannot allocate column memory for obstacles", __LINE__, __FILE__);
 
 	// === INITIALISE CELL GRID ===
@@ -714,27 +711,6 @@ int gather_av_velocities(float* restrict av_vels, int tt, float local_tot_u, int
   int rank, size;
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
   MPI_Comm_size(MPI_COMM_WORLD, &size);
-
-  /*
-  // Only the master thread needs a buffer
-  float *recvbuf = NULL;
-  if (rank == MASTER) {
-    recvbuf = (float*)malloc(sizeof(float) * size);
-  }
-
-  MPI_Gather(&tot_u,  1, MPI_FLOAT, 
-             recvbuf, 1, MPI_FLOAT,
-             MASTER, MPI_COMM_WORLD);
-  
-  if (rank == MASTER) {
-    float sum_tot_u = 0.0f;
-    for (int ii = 0; ii < size; ++ii) {
-      sum_tot_u += recvbuf[ii];
-    }
-
-    av_vels[tt] = sum_tot_u / tot_cells;
-  }
-  */
 
   float tot_u;
   MPI_Reduce(&local_tot_u, &tot_u, 1, MPI_FLOAT, MPI_SUM, MASTER, MPI_COMM_WORLD);
