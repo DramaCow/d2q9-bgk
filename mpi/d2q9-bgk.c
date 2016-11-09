@@ -50,6 +50,7 @@
 
 #include<stdio.h>
 #include<stdlib.h>
+#include<stddef.h>
 #include<math.h>
 #include<time.h>
 #include<sys/time.h>
@@ -225,47 +226,50 @@ int main(int argc, char* argv[])
   timstr = ru.ru_stime;
   systim = timstr.tv_sec + (timstr.tv_usec / 1000000.0);
 
-  // allocate buffer - note, if there exists a remainder, then the master thread will receive one of the extra lines,
-  //                 - and as such the buffer allocated will be the maximum possible segment size for any thread
-  float *buffer = (float*)malloc(sizeof(float) * NSPEEDS * params.nx * length); // maximum possible size of a segment
-  for (int ii = 1; ii < length + 1; ++ii) {
-    for (int jj = 0; jj < params.nx; ++jj) {
-      for (int kk = 0; kk < NSPEEDS; ++kk) {
-        buffer[((ii - 1) * params.nx + jj) * NSPEEDS + kk] = cells[ii * params.nx + jj].speeds[kk];
+  // === DEFINE T_SPEED MPI TYPE ===
+  
+  MPI_Datatype mpi_speed_type;
+  int blocklen[1] = { NSPEEDS };
+  MPI_Aint offsets[1] = { offsetof(t_speed, speeds) };
+  MPI_Datatype types[1] = { MPI_FLOAT };
+  MPI_Type_create_struct(1, blocklen, offsets, types, &mpi_speed_type);
+  MPI_Type_commit(&mpi_speed_type);
+
+  if (rank == MASTER) {
+    t_speed *results = (t_speed*)malloc(sizeof(t_speed) * params.nx * params.ny);
+    for (int ii = 1; ii < length + 1; ++ii) {
+      for (int jj = 0; jj < params.nx; ++jj) {
+        for (int kk = 0; kk < NSPEEDS; ++kk) {
+          results[(ii - 1) * params.nx + jj].speeds[kk] = cells[ii * params.nx + jj].speeds[kk];
+        }
       }
     }
-  }
-
-  // Send data to master to be recombined into answer
-  if (rank != MASTER) {
-    MPI_Ssend(buffer, NSPEEDS * params.nx * length, MPI_FLOAT, MASTER, 0, MPI_COMM_WORLD);
-  }
-  // Recombine data into answer
-  else {
-    free(cells); 
-    cells = (t_speed*)malloc(sizeof(t_speed) * (params.ny * params.nx));
+    free(cells);
+    cells = results;
 
     MPI_Status status;
 
     // receive segment from each node
-    for (int source = 0; source < size; ++source) {
+    for (int source = 1; source < size; ++source) {
       int start  = source * (params.ny / size)                  // the starting row a node computes
                    + (source < remainder ? source : remainder); // consider the extra lines given to previous segments
       int length = (params.ny / size)                           // the limit row a node computes
                    + (source < remainder ? 1 : 0);              // distribute the remaining lines 
 
-      if (source != 0) MPI_Recv(buffer, NSPEEDS * params.nx * length, MPI_FLOAT, source, 0, MPI_COMM_WORLD, &status);
+      printf("process %d: %p, %p\n", source, cells + sizeof(t_speed) * start, &cells[start]);
 
-      for (int ii = start; ii < start + length; ++ii) {
-        for (int jj = 0; jj < params.nx; ++jj) {
-          for (int kk = 0; kk < NSPEEDS; ++kk) {
-            cells[ii * params.nx + jj].speeds[kk] = buffer[((ii - start) * params.nx + jj) * NSPEEDS + kk]; 
-          }  
+      MPI_Recv(&cells[start * params.nx], params.nx * length, mpi_speed_type, source, 0, MPI_COMM_WORLD, &status);
+      if (source == 1) {
+        for (int ii = 0; ii < params.ny; ii++) for (int jj = 0; jj < params.ny; jj++) for (int kk = 0; kk < NSPEEDS; kk++) {
+          if (cells[ii * params.nx + jj].speeds[kk] == 0.0f) printf("%.2f ", cells[ii * params.nx + jj].speeds[kk]);
         }
       }
     }
-  } 
-  free(buffer);
+  }
+  else {
+    MPI_Ssend(&cells[1 * params.nx], params.nx * length, mpi_speed_type, MASTER, 0, MPI_COMM_WORLD);
+  }
+
 
   // write final values and free memory 
   if (rank == MASTER) {
