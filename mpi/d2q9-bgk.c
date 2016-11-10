@@ -88,16 +88,18 @@ int initialise(const char* paramfile, const char* obstaclefile,
                int** obstacles_ptr, float** av_vels_ptr);
 
 // halo exchange only necessary every other timestep
-int halo_exchange_read(const t_param params, t_speed* restrict cells, int length);
-int halo_exchange_write(const t_param params, t_speed* restrict cells, int length);
+int halo_exchange_pull(const t_param params, t_speed* restrict cells, int length);
+int halo_exchange_push(const t_param params, t_speed* restrict cells, int length);
 
 int gather_av_velocities(float* restrict av_vels, int tt, float tot_u, int tot_cells);
 
 // all-in-one
-int d2q9_bgk(const t_param params, const float tot_cells, t_speed* restrict cells, int *restrict obstacles, float* av_vels, int tt, int length);
+int d2q9_bgk(const t_param params, const float tot_cells, 
+             t_speed* restrict cells, int *restrict obstacles, float* av_vels, int tt, 
+             int length, int left, int right);
 int d2q9_bgk_accelerate_flow(const t_param params, const float tot_cells, 
                              t_speed* restrict cells, int *restrict obstacles, float* av_vels, int tt, 
-                             int length, const int accelerating_row);
+                             int length, int left, int right, const int accelerating_row);
 
 int write_values(const t_param params, t_speed* cells, int *obstacles, float *av_vels);
 
@@ -179,6 +181,10 @@ int main(int argc, char* argv[])
   gettimeofday(&timstr, NULL);
   tic = timstr.tv_sec + (timstr.tv_usec / 1000000.0);
 
+  // rank of neighbouring segments
+  int left  = (rank == 0) ? (size - 1) : (rank - 1);
+  int right = (rank == size - 1) ? (0) : (rank + 1);
+
   // NOTE: Whilst this program iterates in strides of 2, it is
   //       trivial to extend the program to be able to end on an odd iteration.
   //       We simply add:
@@ -193,7 +199,9 @@ int main(int argc, char* argv[])
     int accelerating_row = (params.ny - 2) - start;
     printf("accelerating row = %d\n", accelerating_row);
     for (int tt = 0; tt < params.maxIters; tt+=2) {
-      d2q9_bgk_accelerate_flow(params, tot_cells, cells, obstacles, av_vels, tt, length, accelerating_row);
+      d2q9_bgk_accelerate_flow(params, tot_cells, 
+                               cells, obstacles, av_vels, 
+                               tt, length, left, right, accelerating_row);
   #ifdef DEBUG
       printf("==timestep: %d==\n", tt);
       printf("av velocity: %.12E\n", av_vels[tt]);
@@ -206,7 +214,9 @@ int main(int argc, char* argv[])
   }
   else {
     for (int tt = 0; tt < params.maxIters; tt+=2) {
-      d2q9_bgk(params, tot_cells, cells, obstacles, av_vels, tt, length);
+      d2q9_bgk(params, tot_cells, 
+               cells, obstacles, av_vels, 
+               tt, length, left, right);
   #ifdef DEBUG
       printf("==timestep: %d==\n", tt);
       printf("av velocity: %.12E\n", av_vels[tt]);
@@ -259,17 +269,11 @@ int main(int argc, char* argv[])
       printf("process %d: %p, %p\n", source, cells + sizeof(t_speed) * start, &cells[start]);
 
       MPI_Recv(&cells[start * params.nx], params.nx * length, mpi_speed_type, source, 0, MPI_COMM_WORLD, &status);
-      if (source == 1) {
-        for (int ii = 0; ii < params.ny; ii++) for (int jj = 0; jj < params.ny; jj++) for (int kk = 0; kk < NSPEEDS; kk++) {
-          if (cells[ii * params.nx + jj].speeds[kk] == 0.0f) printf("%.2f ", cells[ii * params.nx + jj].speeds[kk]);
-        }
-      }
     }
   }
   else {
     MPI_Ssend(&cells[1 * params.nx], params.nx * length, mpi_speed_type, MASTER, 0, MPI_COMM_WORLD);
   }
-
 
   // write final values and free memory 
   if (rank == MASTER) {
@@ -579,7 +583,7 @@ void usage(const char* exe)
 // === HALO EXCHANGE ===
 // =====================
 
-int halo_exchange_read(const t_param params, t_speed* restrict cells, int length) {
+int halo_exchange_pull(const t_param params, t_speed* restrict cells, int length) {
   MPI_Status status;
 
   // buffer to hold the data dependencies to/from neighbouring segments
@@ -646,7 +650,7 @@ int halo_exchange_read(const t_param params, t_speed* restrict cells, int length
   return EXIT_SUCCESS;
 }
 
-int halo_exchange_write(const t_param params, t_speed* restrict cells, int length) {
+int halo_exchange_push(const t_param params, t_speed* restrict cells, int length) {
   MPI_Status status;
 
   // buffer to hold the data dependencies to/from neighbouring segments
@@ -727,7 +731,9 @@ int gather_av_velocities(float* restrict av_vels, int tt, float local_tot_u, int
 // === ALL IN ONE ===
 // ==================
 
-int d2q9_bgk(const t_param params, const float tot_cells, t_speed* restrict cells, int *restrict obstacles, float* av_vels, int tt, int length)
+int d2q9_bgk(const t_param params, const float tot_cells, 
+             t_speed* restrict cells, int *restrict obstacles, float* av_vels, 
+             int tt, int length, int left, int right)
 {
   // collision constants
   const float w[NSPEEDS] = { 4.0f / 9.0f, 
@@ -744,7 +750,7 @@ int d2q9_bgk(const t_param params, const float tot_cells, t_speed* restrict cell
   //#pragma omp parallel default(none) shared(cells,obstacles) reduction(+:tot_u_t1,tot_u_t2) firstprivate(w,u)
   {
     // get dependencies from neighbouring segments
-    halo_exchange_read(params, cells, length);
+    halo_exchange_pull(params, cells, length);
 
     // loop over the cells in the grid
     //#pragma omp for schedule(static)
@@ -843,7 +849,7 @@ int d2q9_bgk(const t_param params, const float tot_cells, t_speed* restrict cell
     }
 
     // give dependencies to neighbouring cells
-    halo_exchange_write(params, cells, length);
+    halo_exchange_push(params, cells, length);
 
     // loop over the cells in the grid
     //#pragma omp for schedule(static)
@@ -933,7 +939,7 @@ int d2q9_bgk(const t_param params, const float tot_cells, t_speed* restrict cell
 
 int d2q9_bgk_accelerate_flow(const t_param params, const float tot_cells, 
                              t_speed* restrict cells, int *restrict obstacles, float* av_vels, int tt, 
-                             int length, const int accelerating_row)
+                             int length, int left, int right, const int accelerating_row)
 {
   // compute weighting factors
   const float w1a = params.density * params.accel / 9.0f;
@@ -979,7 +985,7 @@ int d2q9_bgk_accelerate_flow(const t_param params, const float tot_cells,
     }
 
     // get dependencies from neighbouring segments
-    halo_exchange_read(params, cells, length);
+    halo_exchange_pull(params, cells, length);
 
     // loop over the cells in the grid
     //#pragma omp for schedule(static)
@@ -1078,7 +1084,7 @@ int d2q9_bgk_accelerate_flow(const t_param params, const float tot_cells,
     }
 
     // give dependencies to neighbouring cells
-    halo_exchange_write(params, cells, length);
+    halo_exchange_push(params, cells, length);
 
     //#pragma omp for schedule(static)
     for (int jj = 0; jj < params.nx; ++jj)
