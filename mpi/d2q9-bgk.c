@@ -88,8 +88,8 @@ int initialise(const char* paramfile, const char* obstaclefile,
                int** obstacles_ptr, float** av_vels_ptr);
 
 // halo exchange only necessary every other timestep
-int halo_exchange_pull(const t_param params, t_speed* restrict cells, int length);
-int halo_exchange_push(const t_param params, t_speed* restrict cells, int length);
+int halo_exchange_pull(const t_param params, t_speed* restrict cells, int length, int left, int right);
+int halo_exchange_push(const t_param params, t_speed* restrict cells, int length, int left, int right);
 
 int gather_av_velocities(float* restrict av_vels, int tt, float tot_u, int tot_cells);
 
@@ -583,20 +583,12 @@ void usage(const char* exe)
 // === HALO EXCHANGE ===
 // =====================
 
-int halo_exchange_pull(const t_param params, t_speed* restrict cells, int length) {
+int halo_exchange_pull(const t_param params, t_speed* restrict cells, int length, int left, int right) {
   MPI_Status status;
 
   // buffer to hold the data dependencies to/from neighbouring segments
   float *sendbuf = (float*)malloc(sizeof(float) * 3 * params.nx);
   float *recvbuf = (float*)malloc(sizeof(float) * 3 * params.nx);
-  
-  int rank, size;
-  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-  MPI_Comm_size(MPI_COMM_WORLD, &size);
-
-  // rank of neighbouring segments
-  int left  = (rank == 0) ? (size - 1) : (rank - 1);
-  int right = (rank == size - 1) ? (0) : (rank + 1);
 
   // NOTE: the last visitable row is end-1
 
@@ -650,21 +642,13 @@ int halo_exchange_pull(const t_param params, t_speed* restrict cells, int length
   return EXIT_SUCCESS;
 }
 
-int halo_exchange_push(const t_param params, t_speed* restrict cells, int length) {
+int halo_exchange_push(const t_param params, t_speed* restrict cells, int length, int left, int right) {
   MPI_Status status;
 
   // buffer to hold the data dependencies to/from neighbouring segments
   float *sendbuf = (float*)malloc(sizeof(float) * 3 * params.nx);
   float *recvbuf = (float*)malloc(sizeof(float) * 3 * params.nx);
   
-  int rank, size;
-  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-  MPI_Comm_size(MPI_COMM_WORLD, &size);
-
-  // rank of neighbouring segments
-  int left  = (rank == 0) ? (size - 1) : (rank - 1);
-  int right = (rank == size - 1) ? (0) : (rank + 1);
-
   // === NORTH ===
 
   // populate buffer to send to right (up)
@@ -750,7 +734,7 @@ int d2q9_bgk(const t_param params, const float tot_cells,
   //#pragma omp parallel default(none) shared(cells,obstacles) reduction(+:tot_u_t1,tot_u_t2) firstprivate(w,u)
   {
     // get dependencies from neighbouring segments
-    halo_exchange_pull(params, cells, length);
+    halo_exchange_pull(params, cells, length, left, right);
 
     // loop over the cells in the grid
     //#pragma omp for schedule(static)
@@ -849,7 +833,7 @@ int d2q9_bgk(const t_param params, const float tot_cells,
     }
 
     // give dependencies to neighbouring cells
-    halo_exchange_push(params, cells, length);
+    halo_exchange_push(params, cells, length, left, right);
 
     // loop over the cells in the grid
     //#pragma omp for schedule(static)
@@ -985,7 +969,7 @@ int d2q9_bgk_accelerate_flow(const t_param params, const float tot_cells,
     }
 
     // get dependencies from neighbouring segments
-    halo_exchange_pull(params, cells, length);
+    halo_exchange_pull(params, cells, length, left, right);
 
     // loop over the cells in the grid
     //#pragma omp for schedule(static)
@@ -1084,7 +1068,7 @@ int d2q9_bgk_accelerate_flow(const t_param params, const float tot_cells,
     }
 
     // give dependencies to neighbouring cells
-    halo_exchange_push(params, cells, length);
+    halo_exchange_push(params, cells, length, left, right);
 
     //#pragma omp for schedule(static)
     for (int jj = 0; jj < params.nx; ++jj)
