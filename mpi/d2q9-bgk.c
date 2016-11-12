@@ -88,8 +88,8 @@ int initialise(const char* paramfile, const char* obstaclefile,
                int** obstacles_ptr, float** av_vels_ptr);
 
 // halo exchange only necessary every other timestep
-int halo_exchange_pull(const t_param params, t_speed* restrict cells, int length, int left, int right);
-int halo_exchange_push(const t_param params, t_speed* restrict cells, int length, int left, int right);
+int halo_exchange_pull(const t_param params, t_speed* restrict cells, int length, int left, int right, float *sendbuf, float *recvbuf);
+int halo_exchange_push(const t_param params, t_speed* restrict cells, int length, int left, int right, float *sendbuf, float *recvbuf);
 
 int gather_av_velocities(float* restrict av_vels, int tt, float tot_u, int tot_cells);
 
@@ -187,13 +187,17 @@ int main(int argc, char* argv[])
       ++local_tot_cells;
   MPI_Reduce(&local_tot_cells, &tot_cells, 1, MPI_FLOAT, MPI_SUM, MASTER, MPI_COMM_WORLD);
 
-  // iterate for maxIters timesteps 
-  gettimeofday(&timstr, NULL);
-  tic = timstr.tv_sec + (timstr.tv_usec / 1000000.0);
-
   // rank of neighbouring segments
   int left  = (rank == 0) ? (size - 1) : (rank - 1);
   int right = (rank == size - 1) ? (0) : (rank + 1);
+
+  // buffer to hold the data dependencies to/from neighbouring segments
+  float *sendbuf = (float*)malloc(sizeof(float) * 3 * params.nx);
+  float *recvbuf = (float*)malloc(sizeof(float) * 3 * params.nx);
+
+  // iterate for maxIters timesteps 
+  gettimeofday(&timstr, NULL);
+  tic = timstr.tv_sec + (timstr.tv_usec / 1000000.0);
 
   // NOTE: Whilst this program iterates in strides of 2, it is
   //       trivial to extend the program to be able to end on an odd iteration.
@@ -213,9 +217,9 @@ int main(int argc, char* argv[])
       //                         cells, obstacles, av_vels, 
       //                         tt, length, left, right, accelerating_row);
       accelerate_flow_1(params, cells, obstacles, accelerating_row);
-      halo_exchange_pull(params, cells, length, left, right);
+      halo_exchange_pull(params, cells, length, left, right, sendbuf, recvbuf);
       timestep_1(params, tot_cells, cells, obstacles, av_vels, tt, length);
-      halo_exchange_push(params, cells, length, left, right);
+      halo_exchange_push(params, cells, length, left, right, sendbuf, recvbuf);
 
       accelerate_flow_2(params, cells, obstacles, accelerating_row);
       timestep_2(params, tot_cells, cells, obstacles, av_vels, tt + 1, length);
@@ -234,9 +238,9 @@ int main(int argc, char* argv[])
       //d2q9_bgk(params, tot_cells, 
       //         cells, obstacles, av_vels, 
       //         tt, length, left, right);
-      halo_exchange_pull(params, cells, length, left, right);
+      halo_exchange_pull(params, cells, length, left, right, sendbuf, recvbuf);
       timestep_1(params, tot_cells, cells, obstacles, av_vels, tt, length);
-      halo_exchange_push(params, cells, length, left, right);
+      halo_exchange_push(params, cells, length, left, right, sendbuf, recvbuf);
 
       timestep_2(params, tot_cells, cells, obstacles, av_vels, tt + 1, length);
   #ifdef DEBUG
@@ -257,6 +261,9 @@ int main(int argc, char* argv[])
   usrtim = timstr.tv_sec + (timstr.tv_usec / 1000000.0);
   timstr = ru.ru_stime;
   systim = timstr.tv_sec + (timstr.tv_usec / 1000000.0);
+
+  free(sendbuf);
+  free(recvbuf);
 
   // === DEFINE T_SPEED MPI TYPE ===
   
@@ -605,14 +612,11 @@ void usage(const char* exe)
 // === HALO EXCHANGE ===
 // =====================
 
-int halo_exchange_pull(const t_param params, t_speed* restrict cells, int length, int left, int right) {
+int halo_exchange_pull(const t_param params, t_speed* restrict cells, 
+                       int length, int left, int right, 
+                       float *sendbuf, float *recvbuf) 
+{
   MPI_Status status;
-
-  // buffer to hold the data dependencies to/from neighbouring segments
-  float *sendbuf = (float*)malloc(sizeof(float) * 3 * params.nx);
-  float *recvbuf = (float*)malloc(sizeof(float) * 3 * params.nx);
-
-  // NOTE: the last visitable row is end-1
 
   // === NORTH ===
 
@@ -658,20 +662,14 @@ int halo_exchange_pull(const t_param params, t_speed* restrict cells, int length
     cells[y_n * params.nx + jj].speeds[8] = recvbuf[jj * 3 + 2];
   }
 
-  free(sendbuf);
-  free(recvbuf);
-  
   return EXIT_SUCCESS;
 }
 
-int halo_exchange_push(const t_param params, t_speed* restrict cells, int length, int left, int right) {
+int halo_exchange_push(const t_param params, t_speed* restrict cells, 
+                       int length, int left, int right, 
+                       float *sendbuf, float *recvbuf) 
+{
   MPI_Status status;
-
-  // buffer to hold the data dependencies to/from neighbouring segments
-  float *sendbuf = (float*)malloc(sizeof(float) * 3 * params.nx);
-  float *recvbuf = (float*)malloc(sizeof(float) * 3 * params.nx);
-  
-  // === NORTH ===
 
   // populate buffer to send to right (up)
   int y_n = length + 1; 
@@ -715,9 +713,6 @@ int halo_exchange_push(const t_param params, t_speed* restrict cells, int length
     cells[last * params.nx + jj].speeds[5] = recvbuf[jj * 3 + 2];
   }
 
-  free(sendbuf);
-  free(recvbuf);
-  
   return EXIT_SUCCESS;
 }
 
