@@ -88,8 +88,8 @@ int initialise(const char* paramfile, const char* obstaclefile,
                int** obstacles_ptr, float** av_vels_ptr);
 
 // halo exchange only necessary every other timestep
-int halo_exchange_pull(const t_param params, t_speed* restrict cells, int length, int left, int right, float *sendbuf, float *recvbuf);
-int halo_exchange_push(const t_param params, t_speed* restrict cells, int length, int left, int right, float *sendbuf, float *recvbuf);
+int halo_exchange_pull(const t_param params, t_speed* restrict cells, int length, int left, int right, float *buf);
+int halo_exchange_push(const t_param params, t_speed* restrict cells, int length, int left, int right, float *buf);
 
 int gather_av_velocities(float* restrict av_vels, int tt, float tot_u, int tot_cells);
 
@@ -192,8 +192,7 @@ int main(int argc, char* argv[])
   int right = (rank == size - 1) ? (0) : (rank + 1);
 
   // buffer to hold the data dependencies to/from neighbouring segments
-  float *sendbuf = (float*)malloc(sizeof(float) * 3 * params.nx);
-  float *recvbuf = (float*)malloc(sizeof(float) * 3 * params.nx);
+  float *buf = (float*)malloc(sizeof(float) * 3 * params.nx);
 
   // iterate for maxIters timesteps 
   gettimeofday(&timstr, NULL);
@@ -211,15 +210,15 @@ int main(int argc, char* argv[])
   //       inputs will have an even number of max iterations.
   if (start <= params.ny - 2 && params.ny - 2 < start + length) {
     int accelerating_row = (params.ny - 2) - start;
-    printf("accelerating row = %d\n", accelerating_row);
+    //printf("accelerating row = %d\n", accelerating_row);
     for (int tt = 0; tt < params.maxIters; tt+=2) {
       //d2q9_bgk_accelerate_flow(params, tot_cells, 
       //                         cells, obstacles, av_vels, 
       //                         tt, length, left, right, accelerating_row);
       accelerate_flow_1(params, cells, obstacles, accelerating_row);
-      halo_exchange_pull(params, cells, length, left, right, sendbuf, recvbuf);
+      halo_exchange_pull(params, cells, length, left, right, buf);
       timestep_1(params, tot_cells, cells, obstacles, av_vels, tt, length);
-      halo_exchange_push(params, cells, length, left, right, sendbuf, recvbuf);
+      halo_exchange_push(params, cells, length, left, right, buf);
 
       accelerate_flow_2(params, cells, obstacles, accelerating_row);
       timestep_2(params, tot_cells, cells, obstacles, av_vels, tt + 1, length);
@@ -238,9 +237,9 @@ int main(int argc, char* argv[])
       //d2q9_bgk(params, tot_cells, 
       //         cells, obstacles, av_vels, 
       //         tt, length, left, right);
-      halo_exchange_pull(params, cells, length, left, right, sendbuf, recvbuf);
+      halo_exchange_pull(params, cells, length, left, right, buf);
       timestep_1(params, tot_cells, cells, obstacles, av_vels, tt, length);
-      halo_exchange_push(params, cells, length, left, right, sendbuf, recvbuf);
+      halo_exchange_push(params, cells, length, left, right, buf);
 
       timestep_2(params, tot_cells, cells, obstacles, av_vels, tt + 1, length);
   #ifdef DEBUG
@@ -262,8 +261,7 @@ int main(int argc, char* argv[])
   timstr = ru.ru_stime;
   systim = timstr.tv_sec + (timstr.tv_usec / 1000000.0);
 
-  free(sendbuf);
-  free(recvbuf);
+  free(buf);
 
   // === DEFINE T_SPEED MPI TYPE ===
   
@@ -295,7 +293,7 @@ int main(int argc, char* argv[])
       int length = (params.ny / size)                           // the limit row a node computes
                    + (source < remainder ? 1 : 0);              // distribute the remaining lines 
 
-      printf("process %d: %p, %p\n", source, cells + sizeof(t_speed) * start, &cells[start]);
+      //printf("process %d: %p, %p\n", source, cells + sizeof(t_speed) * start, &cells[start]);
 
       MPI_Recv(&cells[start * params.nx], params.nx * length, mpi_speed_type, source, 0, MPI_COMM_WORLD, &status);
     }
@@ -614,7 +612,7 @@ void usage(const char* exe)
 
 int halo_exchange_pull(const t_param params, t_speed* restrict cells, 
                        int length, int left, int right, 
-                       float *sendbuf, float *recvbuf) 
+                       float *buf) 
 {
   MPI_Status status;
 
@@ -623,21 +621,21 @@ int halo_exchange_pull(const t_param params, t_speed* restrict cells,
   // populate buffer to send to right (up)
   int last = length;
   for (int jj = 0; jj < params.nx; ++jj) {
-    sendbuf[jj * 3    ] = cells[last * params.nx + jj].speeds[6];
-    sendbuf[jj * 3 + 1] = cells[last * params.nx + jj].speeds[2];
-    sendbuf[jj * 3 + 2] = cells[last * params.nx + jj].speeds[5];
+    buf[jj * 3    ] = cells[last * params.nx + jj].speeds[6];
+    buf[jj * 3 + 1] = cells[last * params.nx + jj].speeds[2];
+    buf[jj * 3 + 2] = cells[last * params.nx + jj].speeds[5];
   }
 
-  MPI_Sendrecv(sendbuf, 3 * params.nx, MPI_FLOAT, right, 0,
-               recvbuf, 3 * params.nx, MPI_FLOAT, left,  0,
-               MPI_COMM_WORLD, &status);
+  MPI_Sendrecv_replace(buf, 3 * params.nx, MPI_FLOAT, 
+                       right, 0, left,  0,
+                       MPI_COMM_WORLD, &status);
 
   // populate southern dependency row
   int y_s = 0;
   for (int jj = 0; jj < params.nx; ++jj) {
-    cells[y_s * params.nx + jj].speeds[6] = recvbuf[jj * 3    ];
-    cells[y_s * params.nx + jj].speeds[2] = recvbuf[jj * 3 + 1];
-    cells[y_s * params.nx + jj].speeds[5] = recvbuf[jj * 3 + 2];
+    cells[y_s * params.nx + jj].speeds[6] = buf[jj * 3    ];
+    cells[y_s * params.nx + jj].speeds[2] = buf[jj * 3 + 1];
+    cells[y_s * params.nx + jj].speeds[5] = buf[jj * 3 + 2];
   }
 
   // === SOUTH ===
@@ -645,21 +643,21 @@ int halo_exchange_pull(const t_param params, t_speed* restrict cells,
   // populate buffer to send to left (down)
   int first = 1;
   for (int jj = 0; jj < params.nx; ++jj) {
-    sendbuf[jj * 3    ] = cells[first * params.nx + jj].speeds[7];
-    sendbuf[jj * 3 + 1] = cells[first * params.nx + jj].speeds[4];
-    sendbuf[jj * 3 + 2] = cells[first * params.nx + jj].speeds[8];
+    buf[jj * 3    ] = cells[first * params.nx + jj].speeds[7];
+    buf[jj * 3 + 1] = cells[first * params.nx + jj].speeds[4];
+    buf[jj * 3 + 2] = cells[first * params.nx + jj].speeds[8];
   }
 
-  MPI_Sendrecv(sendbuf, 3 * params.nx, MPI_FLOAT, left,  0,
-               recvbuf, 3 * params.nx, MPI_FLOAT, right, 0,
-               MPI_COMM_WORLD, &status);
+  MPI_Sendrecv_replace(buf, 3 * params.nx, MPI_FLOAT, 
+                       left, 0, right, 0,
+                       MPI_COMM_WORLD, &status);
 
   // populate northern dependency row
   int y_n = length + 1; 
   for (int jj = 0; jj < params.nx; ++jj) {
-    cells[y_n * params.nx + jj].speeds[7] = recvbuf[jj * 3    ];
-    cells[y_n * params.nx + jj].speeds[4] = recvbuf[jj * 3 + 1];
-    cells[y_n * params.nx + jj].speeds[8] = recvbuf[jj * 3 + 2];
+    cells[y_n * params.nx + jj].speeds[7] = buf[jj * 3    ];
+    cells[y_n * params.nx + jj].speeds[4] = buf[jj * 3 + 1];
+    cells[y_n * params.nx + jj].speeds[8] = buf[jj * 3 + 2];
   }
 
   return EXIT_SUCCESS;
@@ -667,28 +665,28 @@ int halo_exchange_pull(const t_param params, t_speed* restrict cells,
 
 int halo_exchange_push(const t_param params, t_speed* restrict cells, 
                        int length, int left, int right, 
-                       float *sendbuf, float *recvbuf) 
+                       float *buf) 
 {
   MPI_Status status;
 
   // populate buffer to send to right (up)
   int y_n = length + 1; 
   for (int jj = 0; jj < params.nx; ++jj) {
-    sendbuf[jj * 3    ] = cells[y_n * params.nx + jj].speeds[7];
-    sendbuf[jj * 3 + 1] = cells[y_n * params.nx + jj].speeds[4];
-    sendbuf[jj * 3 + 2] = cells[y_n * params.nx + jj].speeds[8];
+    buf[jj * 3    ] = cells[y_n * params.nx + jj].speeds[7];
+    buf[jj * 3 + 1] = cells[y_n * params.nx + jj].speeds[4];
+    buf[jj * 3 + 2] = cells[y_n * params.nx + jj].speeds[8];
   }
 
-  MPI_Sendrecv(sendbuf, 3 * params.nx, MPI_FLOAT, right, 0,
-               recvbuf, 3 * params.nx, MPI_FLOAT, left,  0,
-               MPI_COMM_WORLD, &status);
+  MPI_Sendrecv_replace(buf, 3 * params.nx, MPI_FLOAT, 
+                       right, 0, left,  0,
+                       MPI_COMM_WORLD, &status);
 
   // populate southern dependency row
   int first = 1;
   for (int jj = 0; jj < params.nx; ++jj) {
-    cells[first * params.nx + jj].speeds[7] = recvbuf[jj * 3    ];
-    cells[first * params.nx + jj].speeds[4] = recvbuf[jj * 3 + 1];
-    cells[first * params.nx + jj].speeds[8] = recvbuf[jj * 3 + 2];
+    cells[first * params.nx + jj].speeds[7] = buf[jj * 3    ];
+    cells[first * params.nx + jj].speeds[4] = buf[jj * 3 + 1];
+    cells[first * params.nx + jj].speeds[8] = buf[jj * 3 + 2];
   }
 
   // === SOUTH ===
@@ -696,21 +694,21 @@ int halo_exchange_push(const t_param params, t_speed* restrict cells,
   // populate buffer to send to left (down)
   int y_s = 0;
   for (int jj = 0; jj < params.nx; ++jj) {
-    sendbuf[jj * 3    ] = cells[y_s * params.nx + jj].speeds[6];
-    sendbuf[jj * 3 + 1] = cells[y_s * params.nx + jj].speeds[2];
-    sendbuf[jj * 3 + 2] = cells[y_s * params.nx + jj].speeds[5];
+    buf[jj * 3    ] = cells[y_s * params.nx + jj].speeds[6];
+    buf[jj * 3 + 1] = cells[y_s * params.nx + jj].speeds[2];
+    buf[jj * 3 + 2] = cells[y_s * params.nx + jj].speeds[5];
   }
 
-  MPI_Sendrecv(sendbuf, 3 * params.nx, MPI_FLOAT, left,  0,
-               recvbuf, 3 * params.nx, MPI_FLOAT, right, 0,
-               MPI_COMM_WORLD, &status);
+  MPI_Sendrecv_replace(buf, 3 * params.nx, MPI_FLOAT, 
+                       left, 0, right, 0,
+                       MPI_COMM_WORLD, &status);
 
   // populate northern dependency row
   int last = length;
   for (int jj = 0; jj < params.nx; ++jj) {
-    cells[last * params.nx + jj].speeds[6] = recvbuf[jj * 3    ];
-    cells[last * params.nx + jj].speeds[2] = recvbuf[jj * 3 + 1];
-    cells[last * params.nx + jj].speeds[5] = recvbuf[jj * 3 + 2];
+    cells[last * params.nx + jj].speeds[6] = buf[jj * 3    ];
+    cells[last * params.nx + jj].speeds[2] = buf[jj * 3 + 1];
+    cells[last * params.nx + jj].speeds[5] = buf[jj * 3 + 2];
   }
 
   return EXIT_SUCCESS;
