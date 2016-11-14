@@ -85,7 +85,8 @@ typedef struct
 // load params, allocate memory, load obstacles & initialise fluid particle densities 
 int initialise(const char* paramfile, const char* obstaclefile,
                t_param* params, t_speed** cells_ptr,
-               int** obstacles_ptr, float** av_vels_ptr);
+               int** obstacles_ptr, float** av_vels_ptr,
+               int *coords, int *dims);
 
 // halo exchange only necessary every other timestep
 int halo_exchange_pull(const t_param params, t_speed* restrict cells, int length, int left, int right, float *buf);
@@ -145,6 +146,13 @@ int main(int argc, char* argv[])
   double systim;                // doubleing point number to record elapsed system CPU time 
   float tot_cells = 0.0f;       // number of non-obstacle cells
 
+  int dims[2] = { 0, 0 };       // dimensions (how to split grid)
+  int periods[2] = { 1, 1 };    // wrap around?
+  MPI_Comm comm_cart;           
+  int coords[2];
+  int tmp_start[2];
+  int tmp_length[2];            // number of column or row cells
+
   // parse the command line 
   if (argc != 3)
   {
@@ -166,19 +174,56 @@ int main(int argc, char* argv[])
     MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
   }
 
-  // initialise our data structures and load values from file 
-  initialise(paramfile, obstaclefile, &params, &cells, &obstacles, &av_vels);
-
   // get process information
   int rank, size;
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
   MPI_Comm_size(MPI_COMM_WORLD, &size);
+
+  MPI_Dims_create(size, 2, dims);
+  MPI_Cart_create(MPI_COMM_WORLD, 2, dims, periods, 0, &comm_cart);
+  MPI_Cart_coords(comm_cart, rank, 2, coords);
+
+  // e, n, w, s, ne, nw, sw, se
+  int source, neighbours[8]; // ranks of particular directions
+  {
+    MPI_Cart_shift(comm_cart, 1,  1, &source, &neighbours[0]);
+    MPI_Cart_shift(comm_cart, 0, -1, &source, &neighbours[1]);
+    MPI_Cart_shift(comm_cart, 1, -1, &source, &neighbours[2]);
+    MPI_Cart_shift(comm_cart, 0,  1, &source, &neighbours[3]);
+
+    int dir[2];
+
+    dir[0] = (coords[0] == dims[0] - 1) ? (0) : (coords[0] + 1); 
+    dir[1] = (coords[1] == dims[1] - 1) ? (0) : (coords[1] + 1); 
+    MPI_Cart_rank(comm_cart, dir, &neighbours[4]);
+
+    dir[0] = (coords[0] == 0) ? (dims[0] - 1) : (coords[0] - 1);
+    dir[1] = (coords[1] == dims[1] - 1) ? (0) : (coords[1] + 1); 
+    MPI_Cart_rank(comm_cart, dir, &neighbours[5]);
+
+    dir[0] = (coords[0] == 0) ? (dims[0] - 1) : (coords[0] - 1);
+    dir[1] = (coords[1] == 0) ? (dims[1] - 1) : (coords[1] - 1); 
+    MPI_Cart_rank(comm_cart, dir, &neighbours[6]);
+
+    dir[0] = (coords[0] == dims[0] - 1) ? (0) : (coords[0] + 1); 
+    dir[1] = (coords[1] == 0) ? (dims[1] - 1) : (coords[1] - 1); 
+    MPI_Cart_rank(comm_cart, dir, &neighbours[7]);
+  }
+
+  // initialise our data structures and load values from file 
+  initialise(paramfile, obstaclefile, &params, &cells, &obstacles, &av_vels, coords, dims);
 
   int remainder = params.ny % size;                     // number of spar lines, each line of such is given to a thread
   int start  = rank  * (params.ny / size)               // the starting row a node computes
                + (rank < remainder ? rank : remainder); // consider the extra lines given to previous segments
   int length = (params.ny / size)                       // the limit row a node computes
                + (rank < remainder ? 1 : 0);            // distribute the remaining lines 
+
+  tmp_start[0] = coords[0] * (params.nx / dims[0]);
+  tmp_start[1] = coords[1] * (params.ny / dims[1]);
+
+  tmp_length[0] = (params.nx / dims[0]);
+  tmp_length[1] = (params.ny / dims[1]);
 
   // pre-count number of non-obstacles
   float local_tot_cells = 0.0f;
@@ -330,7 +375,8 @@ int main(int argc, char* argv[])
 
 int initialise(const char* paramfile, const char* obstaclefile,
                t_param* params, t_speed** cells_ptr,
-               int** obstacles_ptr, float** av_vels_ptr)
+               int** obstacles_ptr, float** av_vels_ptr,
+               int *coords, int *dims)
 {
   char   message[1024];  // message buffer 
   FILE*   fp;            // file pointer 
