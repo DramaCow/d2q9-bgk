@@ -422,22 +422,24 @@ int initialise(const char* paramfile, const char* obstaclefile,
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
   MPI_Comm_size(MPI_COMM_WORLD, &size);
 
-  int remainder = params->ny % size;                    // number of spar lines, each line of such is given to a thread
-  int start  = rank  * (params->ny / size)              // the starting row a node computes
-               + (rank < remainder ? rank : remainder); // consider the extra lines given to previous segments
-  int length = (params->ny / size)                      // the limit row a node computes
-               + (rank < remainder ? 1 : 0);            // distribute the remaining lines 
+  int start[2];
+  start[0] = coords[0] * (params->nx / dims[0]);
+  start[1] = coords[1] * (params->ny / dims[1]);
+
+  int length[2];
+  length[0] = (params->nx / dims[0]);
+  length[1] = (params->ny / dims[1]);
 
 	// === ALLOCATE MEMORY ===
 
   // main grid 
-  *cells_ptr = (t_speed*)malloc(sizeof(t_speed) * (params->nx * (length + 2))); // +2 for halos
+  *cells_ptr = (t_speed*)malloc(sizeof(t_speed) * (length[0] + 2) * (length[1] * 2)); // +2 for halos
   if (*cells_ptr == NULL) die("cannot allocate memory for cells", __LINE__, __FILE__);
 
   // the map of obstacles 
   *obstacles_ptr = (rank == MASTER) ?
                    (int*)malloc(sizeof(int) * (params->ny * params->nx)) :
-                   (int*)malloc(sizeof(int) * (params->nx * length)); // don't need halos for obstacles
+                   (int*)malloc(sizeof(int) * (length[0] * length[1])); // don't need halos for obstacles
   if (*obstacles_ptr == NULL) die("cannot allocate column memory for obstacles", __LINE__, __FILE__);
 
 	// === INITIALISE CELL GRID ===
@@ -447,9 +449,9 @@ int initialise(const char* paramfile, const char* obstaclefile,
   float w1 = params->density        / 9.0f ;
   float w2 = params->density        / 36.0f;
 
-  for (int ii = 1; ii < length + 1; ii++)
+  for (int ii = 1; ii < length[1] + 1; ii++)
   {
-    for (int jj = 0; jj < params->nx; jj++)
+    for (int jj = 1; jj < length[0] + 1; jj++)
     {
       // centre 
       (*cells_ptr)[ii * params->nx + jj].speeds[0] = w0;
@@ -469,9 +471,9 @@ int initialise(const char* paramfile, const char* obstaclefile,
   // === INITIALISE OBSTACLE GRID ===
 
   // first set all cells in obstacle array to zero 
-  for (int ii = 0; ii < (rank == MASTER ? params->ny : length); ii++)
+  for (int ii = 0; ii < (rank == MASTER ? params->ny : length[1]); ii++)
   {
-    for (int jj = 0; jj < params->nx; jj++)
+    for (int jj = 0; jj < (rank == MASTER ? params->nx : length[0]); jj++)
     {
       (*obstacles_ptr)[ii * params->nx + jj] = 0;
     }
@@ -495,8 +497,11 @@ int initialise(const char* paramfile, const char* obstaclefile,
     if (blocked != 1) die("obstacle blocked value should be 1", __LINE__, __FILE__);
 
     // assign to array (only if within assigned region)
-    if ((start <= yy && yy < start + length) && rank != MASTER) {
-      (*obstacles_ptr)[(yy - start) * params->nx + xx] = blocked;
+    if ((start[0] <= xx && xx < start[0] + length[0]) && 
+        (start[1] <= yy && yy < start[1] + length[1]) && 
+         rank != MASTER) 
+    {
+      (*obstacles_ptr)[(yy - start[1]) * params->nx + (xx - start[0])] = blocked;
     }
     else if (rank == MASTER) {
       (*obstacles_ptr)[yy * params->nx + xx] = blocked;
