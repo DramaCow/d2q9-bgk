@@ -715,10 +715,6 @@ int halo_exchange_push(const t_param params, t_speed* restrict cells,
 }
 
 int gather_av_velocities(float* restrict av_vels, int tt, float local_tot_u, int tot_cells) {
-  int rank, size;
-  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-  MPI_Comm_size(MPI_COMM_WORLD, &size);
-
   float tot_u;
   MPI_Reduce(&local_tot_u, &tot_u, 1, MPI_FLOAT, MPI_SUM, MASTER, MPI_COMM_WORLD);
   av_vels[tt] = tot_u / tot_cells;
