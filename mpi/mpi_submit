@@ -5,7 +5,7 @@
 #PBS -o d2q9-bgk.out
 #PBS -q teaching
 #PBS -l epilogue=~ggdagw/epilogue.sh
-#PBS -l nodes=4:ppn=16,walltime=00:05:00
+#PBS -l nodes=4:ppn=16,walltime=00:00:20
 
 #! Mail to user if job aborts
 #PBS -m a
@@ -37,8 +37,6 @@ cat $PBS_NODEFILE > machine.file.$PBS_JOBID
 numnodes=`wc $PBS_NODEFILE | awk '{ print $1 }'`
 
 #! Run the parallel MPI executable (nodes*ppn)
-mpirun -np $numnodes -machinefile machine.file.$PBS_JOBID $application $options
-mpirun -np $numnodes -machinefile machine.file.$PBS_JOBID $application $options
 mpirun -np $numnodes -machinefile machine.file.$PBS_JOBID $application $options
 #mpirun -report-bindings -np $numnodes -machinefile machine.file.$PBS_JOBID $application $options 
 #mpirun -report-bindings -np $numnodes -machinefile machine.file.$PBS_JOBID $application $options 
