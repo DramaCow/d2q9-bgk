@@ -224,7 +224,7 @@ int main(int argc, char* argv[])
   // iterate for maxIters timesteps 
   gettimeofday(&timstr, NULL);
   tic = timstr.tv_sec + (timstr.tv_usec / 1000000.0);
-/*
+
   // NOTE: Whilst this program iterates in strides of 2, it is
   //       trivial to extend the program to be able to end on an odd iteration.
   //       We simply add:
@@ -239,24 +239,24 @@ int main(int argc, char* argv[])
     int accelerating_row = (params.ny - 2) - start[1];
     for (int tt = 0; tt < params.maxIters; tt+=2) {
       accelerate_flow_1(params, cells, obstacles, accelerating_row, length);
-      //halo_exchange_pull(params, cells, length, neighbours, buf);
-      //timestep_1(params, tot_cells, cells, obstacles, av_vels, tt, length);
+      halo_exchange_pull(params, cells, length, neighbours, buf);
+      timestep_1(params, tot_cells, cells, obstacles, av_vels, tt, length);
 
       accelerate_flow_2(params, cells, obstacles, accelerating_row, length);
-      //halo_exchange_push(params, cells, length, neighbours, buf);
-      //timestep_2(params, tot_cells, cells, obstacles, av_vels, tt + 1, length);
+      halo_exchange_push(params, cells, length, neighbours, buf);
+      timestep_2(params, tot_cells, cells, obstacles, av_vels, tt + 1, length);
     }
   }
   else {
     for (int tt = 0; tt < params.maxIters; tt+=2) {
-      //halo_exchange_pull(params, cells, length, neighbours, buf);
-      //timestep_1(params, tot_cells, cells, obstacles, av_vels, tt, length);
+      halo_exchange_pull(params, cells, length, neighbours, buf);
+      timestep_1(params, tot_cells, cells, obstacles, av_vels, tt, length);
 
-      //halo_exchange_push(params, cells, length, neighbours, buf);
-      //timestep_2(params, tot_cells, cells, obstacles, av_vels, tt + 1, length);
+      halo_exchange_push(params, cells, length, neighbours, buf);
+      timestep_2(params, tot_cells, cells, obstacles, av_vels, tt + 1, length);
     }
   }
-*/
+
   gettimeofday(&timstr, NULL);
   toc = timstr.tv_sec + (timstr.tv_usec / 1000000.0);
   getrusage(RUSAGE_SELF, &ru);
@@ -335,6 +335,10 @@ int main(int argc, char* argv[])
 
   // write final values and free memory 
   if (rank == MASTER) {
+    // gotta swap these back...
+    params.nx = params.global_nx;
+    params.ny = params.global_ny;
+
     printf("==done==\n");
     printf("Reynolds number:\t\t%.12E\n", calc_reynolds(params, av_vels[params.maxIters - 1]));
     printf("Elapsed time:\t\t\t%.6lf (s)\n", toc - tic);
