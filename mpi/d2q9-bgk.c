@@ -211,12 +211,13 @@ int main(int argc, char* argv[])
   length[0] = (params.global_nx / dims[0]);
   length[1] = (params.global_ny / dims[1]);
 
-  // pre-count number of non-obstacles
-  float local_tot_cells = 0.0f;
-  for (int ii = 0; ii < length[0] * length[1]; ii++) {
-    if (!obstacles[ii]) ++local_tot_cells;
+  { // pre-count number of non-obstacles
+    float local_tot_cells = 0.0f;
+    for (int ii = 0; ii < length[0] * length[1]; ii++) {
+      if (!obstacles[ii]) ++local_tot_cells;
+    }
+    MPI_Reduce(&local_tot_cells, &tot_cells, 1, MPI_FLOAT, MPI_SUM, MASTER, comm_cart);
   }
-  MPI_Reduce(&local_tot_cells, &tot_cells, 1, MPI_FLOAT, MPI_SUM, MASTER, comm_cart);
 
   // buffer to hold the data dependencies to/from neighbouring segments
   float *buf = (float*)malloc(sizeof(float) * (6 * (params.nx + params.ny)));
@@ -313,18 +314,11 @@ int main(int argc, char* argv[])
 				MPI_Recv(&cells[(start[1] + ii) * params.global_nx + start[0]], length[0], mpi_speed_type, source, 0, MPI_COMM_WORLD, &status);
         MPI_Recv(&obstacles[(start[1] + ii) * params.global_nx + start[0]], length[0], MPI_INT, source, 0, MPI_COMM_WORLD, &status);
       }
+
+      // gotta swap these back...
+      params.nx = params.global_nx;
+      params.ny = params.global_ny;
     }
-    /*
-    for (int ii = 0; ii < params.global_ny; ++ii) {
-      for (int jj = 0; jj < params.global_nx; ++jj) {
-        printf("%d", obstacles[ii * params.global_nx + jj]);
-      }
-      printf("\n");
-    }
-    */
-    int test_tot_cells = 0;
-    for (int ii = 0; ii < params.global_nx * params.global_ny; ii++) if (!obstacles[ii]) ++test_tot_cells;
-    printf("sanity check: tot_cells = %d\n", test_tot_cells);
   }
   else {
     for (int ii = 1; ii < length[1] + 1; ++ii) {
@@ -335,10 +329,6 @@ int main(int argc, char* argv[])
 
   // write final values and free memory 
   if (rank == MASTER) {
-    // gotta swap these back...
-    params.nx = params.global_nx;
-    params.ny = params.global_ny;
-
     printf("==done==\n");
     printf("Reynolds number:\t\t%.12E\n", calc_reynolds(params, av_vels[params.maxIters - 1]));
     printf("Elapsed time:\t\t\t%.6lf (s)\n", toc - tic);
@@ -658,7 +648,7 @@ int halo_exchange_pull(const t_param params, t_speed* restrict cells,
   // === COLUMN ===
 
   line = length[0];
-  for (int ii = 0; ii < params.ny; ++ii) {
+  for (int ii = 1; ii < params.ny - 1; ++ii) {
     buf[ii * 3    ] = cells[ii * params.nx + line].speeds[5];
     buf[ii * 3 + 1] = cells[ii * params.nx + line].speeds[1];
     buf[ii * 3 + 2] = cells[ii * params.nx + line].speeds[8];
@@ -669,7 +659,7 @@ int halo_exchange_pull(const t_param params, t_speed* restrict cells,
                        MPI_COMM_WORLD, &status);
 
   line = 0;
-  for (int ii = 0; ii < params.ny; ++ii) {
+  for (int ii = 1; ii < params.ny - 1; ++ii) {
     cells[ii * params.nx + line].speeds[5] = buf[ii * 3    ];
     cells[ii * params.nx + line].speeds[1] = buf[ii * 3 + 1];
     cells[ii * params.nx + line].speeds[8] = buf[ii * 3 + 2];
@@ -678,7 +668,7 @@ int halo_exchange_pull(const t_param params, t_speed* restrict cells,
   // === ROW ===
 
   line = length[1];
-  for (int jj = 0; jj < params.nx; ++jj) {
+  for (int jj = 1; jj < params.nx - 1; ++jj) {
     buf[jj * 3    ] = cells[line * params.nx + jj].speeds[6];
     buf[jj * 3 + 1] = cells[line * params.nx + jj].speeds[2];
     buf[jj * 3 + 2] = cells[line * params.nx + jj].speeds[5];
@@ -689,7 +679,7 @@ int halo_exchange_pull(const t_param params, t_speed* restrict cells,
                        MPI_COMM_WORLD, &status);
 
   line = 0;
-  for (int jj = 0; jj < params.nx; ++jj) {
+  for (int jj = 1; jj < params.nx - 1; ++jj) {
     cells[line * params.nx + jj].speeds[6] = buf[jj * 3    ];
     cells[line * params.nx + jj].speeds[2] = buf[jj * 3 + 1];
     cells[line * params.nx + jj].speeds[5] = buf[jj * 3 + 2];
@@ -698,7 +688,7 @@ int halo_exchange_pull(const t_param params, t_speed* restrict cells,
   // === COLUMN ===
 
   line = 1;
-  for (int ii = 0; ii < params.ny; ++ii) {
+  for (int ii = 1; ii < params.ny - 1; ++ii) {
     buf[ii * 3    ] = cells[ii * params.nx + line].speeds[6];
     buf[ii * 3 + 1] = cells[ii * params.nx + line].speeds[3];
     buf[ii * 3 + 2] = cells[ii * params.nx + line].speeds[7];
@@ -709,7 +699,7 @@ int halo_exchange_pull(const t_param params, t_speed* restrict cells,
                        MPI_COMM_WORLD, &status);
 
   line = length[0] + 1;
-  for (int ii = 0; ii < params.ny; ++ii) {
+  for (int ii = 1; ii < params.ny - 1; ++ii) {
     cells[ii * params.nx + line].speeds[6] = buf[ii * 3    ];
     cells[ii * params.nx + line].speeds[3] = buf[ii * 3 + 1];
     cells[ii * params.nx + line].speeds[7] = buf[ii * 3 + 2];
@@ -718,7 +708,7 @@ int halo_exchange_pull(const t_param params, t_speed* restrict cells,
   // === ROW ===
 
   line = 1;
-  for (int jj = 0; jj < params.nx; ++jj) {
+  for (int jj = 1; jj < params.nx - 1; ++jj) {
     buf[jj * 3    ] = cells[line * params.nx + jj].speeds[7];
     buf[jj * 3 + 1] = cells[line * params.nx + jj].speeds[4];
     buf[jj * 3 + 2] = cells[line * params.nx + jj].speeds[8];
@@ -729,11 +719,39 @@ int halo_exchange_pull(const t_param params, t_speed* restrict cells,
                        MPI_COMM_WORLD, &status);
 
   line = length[1] + 1;
-  for (int jj = 0; jj < params.nx; ++jj) {
+  for (int jj = 1; jj < params.nx - 1; ++jj) {
     cells[line * params.nx + jj].speeds[7] = buf[jj * 3    ];
     cells[line * params.nx + jj].speeds[4] = buf[jj * 3 + 1];
     cells[line * params.nx + jj].speeds[8] = buf[jj * 3 + 2];
   }
+
+  // === CORNERS ===
+
+  float corner; 
+
+  corner = cells[length[1] * params.nx + length[0]].speeds[5];
+  MPI_Sendrecv_replace(&corner, 1, MPI_FLOAT, 
+                       neighbours[4], 0, neighbours[6], 0,
+                       MPI_COMM_WORLD, &status);
+  cells[0 * params.nx + 0].speeds[5] = corner;
+
+  corner = cells[length[1] * params.nx + 0].speeds[6];
+  MPI_Sendrecv_replace(&corner, 1, MPI_FLOAT, 
+                       neighbours[5], 0, neighbours[7], 0,
+                       MPI_COMM_WORLD, &status);
+  cells[0 * params.nx + (length[0] + 1)].speeds[6] = corner;
+
+  corner = cells[1 * params.nx + 1].speeds[7];
+  MPI_Sendrecv_replace(&corner, 1, MPI_FLOAT, 
+                       neighbours[6], 0, neighbours[4], 0,
+                       MPI_COMM_WORLD, &status);
+  cells[(length[1] + 1) * params.nx + (length[0] + 1)].speeds[7] = corner;
+
+  corner = cells[1 * params.nx + length[0]].speeds[8];
+  MPI_Sendrecv_replace(&corner, 1, MPI_FLOAT, 
+                       neighbours[7], 0, neighbours[5], 0,
+                       MPI_COMM_WORLD, &status);
+  cells[(length[1] + 1) * params.nx + 0].speeds[8] = corner;
 
   return EXIT_SUCCESS;
 }
@@ -748,7 +766,7 @@ int halo_exchange_push(const t_param params, t_speed* restrict cells,
   // === COLUMN ===
 
   line = length[0] + 1;
-  for (int ii = 0; ii < params.ny; ++ii) {
+  for (int ii = 1; ii < params.ny - 1; ++ii) {
     buf[ii * 3    ] = cells[ii * params.nx + line].speeds[6];
     buf[ii * 3 + 1] = cells[ii * params.nx + line].speeds[3];
     buf[ii * 3 + 2] = cells[ii * params.nx + line].speeds[7];
@@ -759,7 +777,7 @@ int halo_exchange_push(const t_param params, t_speed* restrict cells,
                        MPI_COMM_WORLD, &status);
 
   line = 1;
-  for (int ii = 0; ii < params.ny; ++ii) {
+  for (int ii = 1; ii < params.ny - 1; ++ii) {
     cells[ii * params.nx + line].speeds[6] = buf[ii * 3    ];
     cells[ii * params.nx + line].speeds[3] = buf[ii * 3 + 1];
     cells[ii * params.nx + line].speeds[7] = buf[ii * 3 + 2];
@@ -768,7 +786,7 @@ int halo_exchange_push(const t_param params, t_speed* restrict cells,
   // === ROW ===
 
   line = length[1] + 1;
-  for (int jj = 0; jj < params.nx; ++jj) {
+  for (int jj = 1; jj < params.nx - 1; ++jj) {
     buf[jj * 3    ] = cells[line * params.nx + jj].speeds[7];
     buf[jj * 3 + 1] = cells[line * params.nx + jj].speeds[4];
     buf[jj * 3 + 2] = cells[line * params.nx + jj].speeds[8];
@@ -779,7 +797,7 @@ int halo_exchange_push(const t_param params, t_speed* restrict cells,
                        MPI_COMM_WORLD, &status);
 
   line = 1;
-  for (int jj = 0; jj < params.nx; ++jj) {
+  for (int jj = 1; jj < params.nx - 1; ++jj) {
     cells[line * params.nx + jj].speeds[7] = buf[jj * 3    ];
     cells[line * params.nx + jj].speeds[4] = buf[jj * 3 + 1];
     cells[line * params.nx + jj].speeds[8] = buf[jj * 3 + 2];
@@ -788,7 +806,7 @@ int halo_exchange_push(const t_param params, t_speed* restrict cells,
   // === COLUMN ===
 
   line = 0;
-  for (int ii = 0; ii < params.ny; ++ii) {
+  for (int ii = 1; ii < params.ny - 1; ++ii) {
     buf[ii * 3    ] = cells[ii * params.nx + line].speeds[5];
     buf[ii * 3 + 1] = cells[ii * params.nx + line].speeds[1];
     buf[ii * 3 + 2] = cells[ii * params.nx + line].speeds[8];
@@ -799,7 +817,7 @@ int halo_exchange_push(const t_param params, t_speed* restrict cells,
                        MPI_COMM_WORLD, &status);
 
   line = length[0];
-  for (int ii = 0; ii < params.ny; ++ii) {
+  for (int ii = 1; ii < params.ny - 1; ++ii) {
     cells[ii * params.nx + line].speeds[5] = buf[ii * 3    ];
     cells[ii * params.nx + line].speeds[1] = buf[ii * 3 + 1];
     cells[ii * params.nx + line].speeds[8] = buf[ii * 3 + 2];
@@ -808,7 +826,7 @@ int halo_exchange_push(const t_param params, t_speed* restrict cells,
   // === ROW ===
 
   line = 0;
-  for (int jj = 0; jj < params.nx; ++jj) {
+  for (int jj = 1; jj < params.nx - 1; ++jj) {
     buf[jj * 3    ] = cells[line * params.nx + jj].speeds[6];
     buf[jj * 3 + 1] = cells[line * params.nx + jj].speeds[2];
     buf[jj * 3 + 2] = cells[line * params.nx + jj].speeds[5];
@@ -819,11 +837,39 @@ int halo_exchange_push(const t_param params, t_speed* restrict cells,
                        MPI_COMM_WORLD, &status);
 
   line = length[1];
-  for (int jj = 0; jj < params.nx; ++jj) {
+  for (int jj = 1; jj < params.nx - 1; ++jj) {
     cells[line * params.nx + jj].speeds[6] = buf[jj * 3    ];
     cells[line * params.nx + jj].speeds[2] = buf[jj * 3 + 1];
     cells[line * params.nx + jj].speeds[5] = buf[jj * 3 + 2];
   }
+
+  // === CORNERS ===
+
+  float corner; 
+
+  corner = cells[(length[1] + 1) * params.nx + (length[0] + 1)].speeds[7];
+  MPI_Sendrecv_replace(&corner, 1, MPI_FLOAT, 
+                       neighbours[4], 0, neighbours[6], 0,
+                       MPI_COMM_WORLD, &status);
+  cells[1 * params.nx + 1].speeds[7] = corner;
+
+  corner = cells[(length[1] + 1) * params.nx + 1].speeds[8];
+  MPI_Sendrecv_replace(&corner, 1, MPI_FLOAT, 
+                       neighbours[5], 0, neighbours[7], 0,
+                       MPI_COMM_WORLD, &status);
+  cells[1 * params.nx + length[0]].speeds[8] = corner;
+
+  corner = cells[0 * params.nx + 0].speeds[5];
+  MPI_Sendrecv_replace(&corner, 1, MPI_FLOAT, 
+                       neighbours[6], 0, neighbours[4], 0,
+                       MPI_COMM_WORLD, &status);
+  cells[length[1] * params.nx + length[0]].speeds[5] = corner;
+
+  corner = cells[0 * params.nx + (length[0] + 1)].speeds[6];
+  MPI_Sendrecv_replace(&corner, 1, MPI_FLOAT, 
+                       neighbours[7], 0, neighbours[5], 0,
+                       MPI_COMM_WORLD, &status);
+  cells[length[1] * params.nx + 1].speeds[6] = corner;
 
   return EXIT_SUCCESS;
 }
