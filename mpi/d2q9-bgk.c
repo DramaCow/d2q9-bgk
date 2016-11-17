@@ -201,6 +201,8 @@ int main(int argc, char* argv[])
     dir[1] = (coords[1] == 0) ? (dims[1] - 1) : (coords[1] - 1); 
     MPI_Cart_rank(comm_cart, dir, &neighbours[7]);
   }
+  //printf("rank[%d] --> (%d, %d, %d, %d, %d, %d, %d, %d)\n", rank, neighbours[0], neighbours[1], neighbours[2], neighbours[3], 
+  //                                                                neighbours[4], neighbours[5], neighbours[6], neighbours[7]);
 
   // initialise our data structures and load values from file 
   initialise(paramfile, obstaclefile, &params, &cells, &obstacles, &av_vels, coords, dims);
@@ -236,8 +238,9 @@ int main(int argc, char* argv[])
   //           from neighbouring cells rather than from the local cell
   //       I've ommitted these due to time constraints under the assumption that (for now)
   //       inputs will have an even number of max iterations.  
-  if (start[1] <= params.ny - 2 && params.ny - 2 < start[1] + length[1]) {
-    int accelerating_row = (params.ny - 2) - start[1];
+  if (start[1] <= params.global_ny - 2 && params.global_ny - 2 < start[1] + length[1]) {
+    int accelerating_row = (params.global_ny - 2) - start[1];
+    printf("(%d, %d) of %d -- [%d, %d]\n", coords[0], coords[1], rank, start[1], length[1]);
     for (int tt = 0; tt < params.maxIters; tt+=2) {
       accelerate_flow_1(params, cells, obstacles, accelerating_row, length);
       halo_exchange_pull(params, cells, length, neighbours, buf);
@@ -735,7 +738,7 @@ int halo_exchange_pull(const t_param params, t_speed* restrict cells,
                        MPI_COMM_WORLD, &status);
   cells[0 * params.nx + 0].speeds[5] = corner;
 
-  corner = cells[length[1] * params.nx + 0].speeds[6];
+  corner = cells[length[1] * params.nx + 1].speeds[6];
   MPI_Sendrecv_replace(&corner, 1, MPI_FLOAT, 
                        neighbours[5], 0, neighbours[7], 0,
                        MPI_COMM_WORLD, &status);
@@ -853,7 +856,7 @@ int halo_exchange_push(const t_param params, t_speed* restrict cells,
                        MPI_COMM_WORLD, &status);
   cells[1 * params.nx + 1].speeds[7] = corner;
 
-  corner = cells[(length[1] + 1) * params.nx + 1].speeds[8];
+  corner = cells[(length[1] + 1) * params.nx + 0].speeds[8];
   MPI_Sendrecv_replace(&corner, 1, MPI_FLOAT, 
                        neighbours[5], 0, neighbours[7], 0,
                        MPI_COMM_WORLD, &status);
@@ -899,7 +902,7 @@ void accelerate_flow_1(const t_param params, t_speed* cells, int* obstacles, con
   {
     // if the cell is not occupied and
     // we don't send a negative density
-    if (!obstacles[row2 * length[0] + jj]
+    if (!obstacles[row2 * length[0] + (jj - 1)]
         && (cells[(row2 + 1) * params.nx + jj].speeds[3] - w1a) > 0.0f
         && (cells[(row2 + 1) * params.nx + jj].speeds[6] - w2a) > 0.0f
         && (cells[(row2 + 1) * params.nx + jj].speeds[7] - w2a) > 0.0f)
@@ -934,7 +937,7 @@ void accelerate_flow_2(const t_param params, t_speed* cells, int* obstacles, con
 
     // if the cell is not occupied and
     // we don't send a negative density
-    if (!obstacles[row2 * length[0] + jj]
+    if (!obstacles[row2 * length[0] + (jj - 1)]
         && (cells[(row2 + 1) * params.nx + x_w].speeds[1] - w1a) > 0.0f
         && (cells[(row1 + 1) * params.nx + x_w].speeds[8] - w2a) > 0.0f
         && (cells[(row3 + 1) * params.nx + x_w].speeds[5] - w2a) > 0.0f)
