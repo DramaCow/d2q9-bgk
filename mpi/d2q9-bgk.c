@@ -176,12 +176,10 @@ int main(int argc, char* argv[])
   MPI_Cart_coords(comm_cart, rank, 2, coords);
 
   // e, n, w, s, ne, nw, sw, se
-  int source, neighbours[8]; // ranks of particular directions
+  int neighbours[8]; // ranks of particular directions
   {
-    MPI_Cart_shift(comm_cart, 1,  1, &source, &neighbours[0]);
-    MPI_Cart_shift(comm_cart, 0, -1, &source, &neighbours[1]);
-    MPI_Cart_shift(comm_cart, 1, -1, &source, &neighbours[2]);
-    MPI_Cart_shift(comm_cart, 0,  1, &source, &neighbours[3]);
+    MPI_Cart_shift(comm_cart, 0,  1, &neighbours[2], &neighbours[0]);
+    MPI_Cart_shift(comm_cart, 1,  1, &neighbours[3], &neighbours[1]);
 
     int dir[2];
 
@@ -201,8 +199,8 @@ int main(int argc, char* argv[])
     dir[1] = (coords[1] == 0) ? (dims[1] - 1) : (coords[1] - 1); 
     MPI_Cart_rank(comm_cart, dir, &neighbours[7]);
   }
-  //printf("rank[%d] --> (%d, %d, %d, %d, %d, %d, %d, %d)\n", rank, neighbours[0], neighbours[1], neighbours[2], neighbours[3], 
-  //                                                                neighbours[4], neighbours[5], neighbours[6], neighbours[7]);
+  printf("rank[%d, %d : %d] --> (%d, %d, %d, %d, %d, %d, %d, %d)\n", coords[0], coords[1], rank, 
+  neighbours[0], neighbours[1], neighbours[2], neighbours[3], neighbours[4], neighbours[5], neighbours[6], neighbours[7]);
 
   // initialise our data structures and load values from file 
   initialise(paramfile, obstaclefile, &params, &cells, &obstacles, &av_vels, coords, dims);
