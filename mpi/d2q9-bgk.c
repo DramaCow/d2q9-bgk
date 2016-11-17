@@ -639,9 +639,9 @@ int halo_exchange_pull(const t_param params, t_speed* restrict cells, int *neigh
 
   line = params.lx;
   for (int ii = 1; ii < params.ny - 1; ++ii) {
-    buf[ii * 3    ] = cells[ii * params.nx + line].speeds[5];
-    buf[ii * 3 + 1] = cells[ii * params.nx + line].speeds[1];
-    buf[ii * 3 + 2] = cells[ii * params.nx + line].speeds[8];
+    buf[(ii - 1) * 3    ] = cells[ii * params.nx + line].speeds[5];
+    buf[(ii - 1) * 3 + 1] = cells[ii * params.nx + line].speeds[1];
+    buf[(ii - 1) * 3 + 2] = cells[ii * params.nx + line].speeds[8];
   }
 
   MPI_Sendrecv_replace(buf, 3 * params.ny, MPI_FLOAT, 
@@ -650,18 +650,18 @@ int halo_exchange_pull(const t_param params, t_speed* restrict cells, int *neigh
 
   line = 0;
   for (int ii = 1; ii < params.ny - 1; ++ii) {
-    cells[ii * params.nx + line].speeds[5] = buf[ii * 3    ];
-    cells[ii * params.nx + line].speeds[1] = buf[ii * 3 + 1];
-    cells[ii * params.nx + line].speeds[8] = buf[ii * 3 + 2];
+    cells[ii * params.nx + line].speeds[5] = buf[(ii - 1) * 3    ];
+    cells[ii * params.nx + line].speeds[1] = buf[(ii - 1) * 3 + 1];
+    cells[ii * params.nx + line].speeds[8] = buf[(ii - 1) * 3 + 2];
   }
 
   // === ROW ===
 
   line = params.ly;
   for (int jj = 1; jj < params.nx - 1; ++jj) {
-    buf[jj * 3    ] = cells[line * params.nx + jj].speeds[6];
-    buf[jj * 3 + 1] = cells[line * params.nx + jj].speeds[2];
-    buf[jj * 3 + 2] = cells[line * params.nx + jj].speeds[5];
+    buf[(jj - 1) * 3    ] = cells[line * params.nx + jj].speeds[6];
+    buf[(jj - 1) * 3 + 1] = cells[line * params.nx + jj].speeds[2];
+    buf[(jj - 1) * 3 + 2] = cells[line * params.nx + jj].speeds[5];
   }
 
   MPI_Sendrecv_replace(buf, 3 * params.nx, MPI_FLOAT, 
@@ -670,18 +670,18 @@ int halo_exchange_pull(const t_param params, t_speed* restrict cells, int *neigh
 
   line = 0;
   for (int jj = 1; jj < params.nx - 1; ++jj) {
-    cells[line * params.nx + jj].speeds[6] = buf[jj * 3    ];
-    cells[line * params.nx + jj].speeds[2] = buf[jj * 3 + 1];
-    cells[line * params.nx + jj].speeds[5] = buf[jj * 3 + 2];
+    cells[line * params.nx + jj].speeds[6] = buf[(jj - 1) * 3    ];
+    cells[line * params.nx + jj].speeds[2] = buf[(jj - 1) * 3 + 1];
+    cells[line * params.nx + jj].speeds[5] = buf[(jj - 1) * 3 + 2];
   }
 
   // === COLUMN ===
 
   line = 1;
   for (int ii = 1; ii < params.ny - 1; ++ii) {
-    buf[ii * 3    ] = cells[ii * params.nx + line].speeds[6];
-    buf[ii * 3 + 1] = cells[ii * params.nx + line].speeds[3];
-    buf[ii * 3 + 2] = cells[ii * params.nx + line].speeds[7];
+    buf[(ii - 1) * 3    ] = cells[ii * params.nx + line].speeds[6];
+    buf[(ii - 1) * 3 + 1] = cells[ii * params.nx + line].speeds[3];
+    buf[(ii - 1) * 3 + 2] = cells[ii * params.nx + line].speeds[7];
   }
 
   MPI_Sendrecv_replace(buf, 3 * params.ny, MPI_FLOAT, 
@@ -690,18 +690,18 @@ int halo_exchange_pull(const t_param params, t_speed* restrict cells, int *neigh
 
   line = params.lx + 1;
   for (int ii = 1; ii < params.ny - 1; ++ii) {
-    cells[ii * params.nx + line].speeds[6] = buf[ii * 3    ];
-    cells[ii * params.nx + line].speeds[3] = buf[ii * 3 + 1];
-    cells[ii * params.nx + line].speeds[7] = buf[ii * 3 + 2];
+    cells[ii * params.nx + line].speeds[6] = buf[(ii - 1) * 3    ];
+    cells[ii * params.nx + line].speeds[3] = buf[(ii - 1) * 3 + 1];
+    cells[ii * params.nx + line].speeds[7] = buf[(ii - 1) * 3 + 2];
   }
 
   // === ROW ===
 
   line = 1;
   for (int jj = 1; jj < params.nx - 1; ++jj) {
-    buf[jj * 3    ] = cells[line * params.nx + jj].speeds[7];
-    buf[jj * 3 + 1] = cells[line * params.nx + jj].speeds[4];
-    buf[jj * 3 + 2] = cells[line * params.nx + jj].speeds[8];
+    buf[(jj - 1) * 3    ] = cells[line * params.nx + jj].speeds[7];
+    buf[(jj - 1) * 3 + 1] = cells[line * params.nx + jj].speeds[4];
+    buf[(jj - 1) * 3 + 2] = cells[line * params.nx + jj].speeds[8];
   }
 
   MPI_Sendrecv_replace(buf, 3 * params.nx, MPI_FLOAT, 
@@ -710,9 +710,9 @@ int halo_exchange_pull(const t_param params, t_speed* restrict cells, int *neigh
 
   line = params.ly + 1;
   for (int jj = 1; jj < params.nx - 1; ++jj) {
-    cells[line * params.nx + jj].speeds[7] = buf[jj * 3    ];
-    cells[line * params.nx + jj].speeds[4] = buf[jj * 3 + 1];
-    cells[line * params.nx + jj].speeds[8] = buf[jj * 3 + 2];
+    cells[line * params.nx + jj].speeds[7] = buf[(jj - 1) * 3    ];
+    cells[line * params.nx + jj].speeds[4] = buf[(jj - 1) * 3 + 1];
+    cells[line * params.nx + jj].speeds[8] = buf[(jj - 1) * 3 + 2];
   }
 
   // === CORNERS ===
@@ -754,9 +754,9 @@ int halo_exchange_push(const t_param params, t_speed* restrict cells, int *neigh
 
   line = params.lx + 1;
   for (int ii = 1; ii < params.ny - 1; ++ii) {
-    buf[ii * 3    ] = cells[ii * params.nx + line].speeds[6];
-    buf[ii * 3 + 1] = cells[ii * params.nx + line].speeds[3];
-    buf[ii * 3 + 2] = cells[ii * params.nx + line].speeds[7];
+    buf[(ii - 1) * 3    ] = cells[ii * params.nx + line].speeds[6];
+    buf[(ii - 1) * 3 + 1] = cells[ii * params.nx + line].speeds[3];
+    buf[(ii - 1) * 3 + 2] = cells[ii * params.nx + line].speeds[7];
   }
 
   MPI_Sendrecv_replace(buf, 3 * params.ny, MPI_FLOAT, 
@@ -765,18 +765,18 @@ int halo_exchange_push(const t_param params, t_speed* restrict cells, int *neigh
 
   line = 1;
   for (int ii = 1; ii < params.ny - 1; ++ii) {
-    cells[ii * params.nx + line].speeds[6] = buf[ii * 3    ];
-    cells[ii * params.nx + line].speeds[3] = buf[ii * 3 + 1];
-    cells[ii * params.nx + line].speeds[7] = buf[ii * 3 + 2];
+    cells[ii * params.nx + line].speeds[6] = buf[(ii - 1) * 3    ];
+    cells[ii * params.nx + line].speeds[3] = buf[(ii - 1) * 3 + 1];
+    cells[ii * params.nx + line].speeds[7] = buf[(ii - 1) * 3 + 2];
   }
 
   // === ROW ===
 
   line = params.ly + 1;
   for (int jj = 1; jj < params.nx - 1; ++jj) {
-    buf[jj * 3    ] = cells[line * params.nx + jj].speeds[7];
-    buf[jj * 3 + 1] = cells[line * params.nx + jj].speeds[4];
-    buf[jj * 3 + 2] = cells[line * params.nx + jj].speeds[8];
+    buf[(jj - 1) * 3    ] = cells[line * params.nx + jj].speeds[7];
+    buf[(jj - 1) * 3 + 1] = cells[line * params.nx + jj].speeds[4];
+    buf[(jj - 1) * 3 + 2] = cells[line * params.nx + jj].speeds[8];
   }
 
   MPI_Sendrecv_replace(buf, 3 * params.nx, MPI_FLOAT, 
@@ -785,18 +785,18 @@ int halo_exchange_push(const t_param params, t_speed* restrict cells, int *neigh
 
   line = 1;
   for (int jj = 1; jj < params.nx - 1; ++jj) {
-    cells[line * params.nx + jj].speeds[7] = buf[jj * 3    ];
-    cells[line * params.nx + jj].speeds[4] = buf[jj * 3 + 1];
-    cells[line * params.nx + jj].speeds[8] = buf[jj * 3 + 2];
+    cells[line * params.nx + jj].speeds[7] = buf[(jj - 1) * 3    ];
+    cells[line * params.nx + jj].speeds[4] = buf[(jj - 1) * 3 + 1];
+    cells[line * params.nx + jj].speeds[8] = buf[(jj - 1) * 3 + 2];
   }
 
   // === COLUMN ===
 
   line = 0;
   for (int ii = 1; ii < params.ny - 1; ++ii) {
-    buf[ii * 3    ] = cells[ii * params.nx + line].speeds[5];
-    buf[ii * 3 + 1] = cells[ii * params.nx + line].speeds[1];
-    buf[ii * 3 + 2] = cells[ii * params.nx + line].speeds[8];
+    buf[(ii - 1) * 3    ] = cells[ii * params.nx + line].speeds[5];
+    buf[(ii - 1) * 3 + 1] = cells[ii * params.nx + line].speeds[1];
+    buf[(ii - 1) * 3 + 2] = cells[ii * params.nx + line].speeds[8];
   }
 
   MPI_Sendrecv_replace(buf, 3 * params.ny, MPI_FLOAT, 
@@ -805,18 +805,18 @@ int halo_exchange_push(const t_param params, t_speed* restrict cells, int *neigh
 
   line = params.lx;
   for (int ii = 1; ii < params.ny - 1; ++ii) {
-    cells[ii * params.nx + line].speeds[5] = buf[ii * 3    ];
-    cells[ii * params.nx + line].speeds[1] = buf[ii * 3 + 1];
-    cells[ii * params.nx + line].speeds[8] = buf[ii * 3 + 2];
+    cells[ii * params.nx + line].speeds[5] = buf[(ii - 1) * 3    ];
+    cells[ii * params.nx + line].speeds[1] = buf[(ii - 1) * 3 + 1];
+    cells[ii * params.nx + line].speeds[8] = buf[(ii - 1) * 3 + 2];
   }
 
   // === ROW ===
 
   line = 0;
   for (int jj = 1; jj < params.nx - 1; ++jj) {
-    buf[jj * 3    ] = cells[line * params.nx + jj].speeds[6];
-    buf[jj * 3 + 1] = cells[line * params.nx + jj].speeds[2];
-    buf[jj * 3 + 2] = cells[line * params.nx + jj].speeds[5];
+    buf[(jj - 1) * 3    ] = cells[line * params.nx + jj].speeds[6];
+    buf[(jj - 1) * 3 + 1] = cells[line * params.nx + jj].speeds[2];
+    buf[(jj - 1) * 3 + 2] = cells[line * params.nx + jj].speeds[5];
   }
 
   MPI_Sendrecv_replace(buf, 3 * params.nx, MPI_FLOAT, 
@@ -825,9 +825,9 @@ int halo_exchange_push(const t_param params, t_speed* restrict cells, int *neigh
 
   line = params.ly;
   for (int jj = 1; jj < params.nx - 1; ++jj) {
-    cells[line * params.nx + jj].speeds[6] = buf[jj * 3    ];
-    cells[line * params.nx + jj].speeds[2] = buf[jj * 3 + 1];
-    cells[line * params.nx + jj].speeds[5] = buf[jj * 3 + 2];
+    cells[line * params.nx + jj].speeds[6] = buf[(jj - 1) * 3    ];
+    cells[line * params.nx + jj].speeds[2] = buf[(jj - 1) * 3 + 1];
+    cells[line * params.nx + jj].speeds[5] = buf[(jj - 1) * 3 + 2];
   }
 
   // === CORNERS ===
