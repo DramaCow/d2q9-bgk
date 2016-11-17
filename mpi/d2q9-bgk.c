@@ -65,12 +65,17 @@
 // struct to hold the parameter values 
 typedef struct
 {
-  int   global_nx;
-  int   global_ny;
-  int    nx;            // no. of cells in x-direction 
-  int    ny;            // no. of cells in y-direction 
-  int    maxIters;      // no. of iterations 
-  int    reynolds_dim;  // dimension for Reynolds number 
+  int   gx;            // no. of cells in x direction (for entire grid)
+  int   gy;            // no. of cells in y direction (for entire grid)
+
+  int   lx;            // no. of cells in x direction
+  int   ly;            // no. of cells in y direction
+
+  int   nx;            // no. of cells in x-direction (plus ghosts)
+  int   ny;            // no. of cells in y-direction (plus ghosts)
+
+  int   maxIters;      // no. of iterations 
+  int   reynolds_dim;  // dimension for Reynolds number 
   float density;       // density per link 
   float accel;         // density redistribution 
   float omega;         // relaxation parameter 
@@ -91,18 +96,16 @@ int initialise(const char* paramfile, const char* obstaclefile,
                int *coords, int *dims);
 
 // halo exchange only necessary every other timestep
-int halo_exchange_pull(const t_param params, t_speed* restrict cells, int *length, int *neighbours, float *buf);
-int halo_exchange_push(const t_param params, t_speed* restrict cells, int *length, int *neighbours, float *buf);
+int halo_exchange_pull(const t_param params, t_speed* restrict cells, int *neighbours, float *buf);
+int halo_exchange_push(const t_param params, t_speed* restrict cells, int *neighbours, float *buf);
 
 int gather_av_velocities(float* restrict av_vels, int tt, float tot_u, int tot_cells);
 
 // seperate functions
-void accelerate_flow_1(const t_param params, t_speed* cells, int* obstacles, const int accelerating_row, int *length);
-void accelerate_flow_2(const t_param params, t_speed* cells, int* obstacles, const int accelerating_row, int *length);
-void timestep_1(const t_param params, const float tot_cells, 
-                t_speed* restrict cells, int *restrict obstacles, float* av_vels, int tt, int *length);
-void timestep_2(const t_param params, const float tot_cells, 
-                t_speed* restrict cells, int *restrict obstacles, float* av_vels, int tt, int *length);
+void accelerate_flow_1(const t_param params, t_speed* cells, int* obstacles, const int accelerating_row);
+void accelerate_flow_2(const t_param params, t_speed* cells, int* obstacles, const int accelerating_row);
+void timestep_1(const t_param params, const float tot_cells, t_speed* restrict cells, int *restrict obstacles, float* av_vels, int tt);
+void timestep_2(const t_param params, const float tot_cells, t_speed* restrict cells, int *restrict obstacles, float* av_vels, int tt);
 
 int write_values(const t_param params, t_speed* cells, int *obstacles, float *av_vels);
 
@@ -142,8 +145,6 @@ int main(int argc, char* argv[])
   int periods[2] = { 1, 1 };    // wrap around?
   MPI_Comm comm_cart;           
   int coords[2];
-  int start[2];
-  int length[2];            // number of column or row cells
 
   // parse the command line 
   if (argc != 3)
@@ -205,15 +206,12 @@ int main(int argc, char* argv[])
   // initialise our data structures and load values from file 
   initialise(paramfile, obstaclefile, &params, &cells, &obstacles, &av_vels, coords, dims);
 
-  start[0] = coords[0] * (params.global_nx / dims[0]);
-  start[1] = coords[1] * (params.global_ny / dims[1]);
-
-  length[0] = (params.global_nx / dims[0]);
-  length[1] = (params.global_ny / dims[1]);
+  int sx = coords[0] * (params.gx / dims[0]);
+  int sy = coords[1] * (params.gy / dims[1]);
 
   { // pre-count number of non-obstacles
     float local_tot_cells = 0.0f;
-    for (int ii = 0; ii < length[0] * length[1]; ii++) {
+    for (int ii = 0; ii < params.lx * params.ly; ii++) {
       if (!obstacles[ii]) ++local_tot_cells;
     }
     MPI_Reduce(&local_tot_cells, &tot_cells, 1, MPI_FLOAT, MPI_SUM, MASTER, comm_cart);
@@ -236,26 +234,26 @@ int main(int argc, char* argv[])
   //           from neighbouring cells rather than from the local cell
   //       I've ommitted these due to time constraints under the assumption that (for now)
   //       inputs will have an even number of max iterations.  
-  if (start[1] <= params.global_ny - 2 && params.global_ny - 2 < start[1] + length[1]) {
-    int accelerating_row = (params.global_ny - 2) - start[1];
-    printf("(%d, %d) of %d -- [%d, %d]\n", coords[0], coords[1], rank, start[1], length[1]);
+  if (sy <= params.gy - 2 && params.gy - 2 < sy + params.ly) {
+    int accelerating_row = (params.gy - 2) - sy;
+    printf("(%d, %d) of %d -- [%d, %d]\n", coords[0], coords[1], rank, sy, params.ly);
     for (int tt = 0; tt < params.maxIters; tt+=2) {
-      accelerate_flow_1(params, cells, obstacles, accelerating_row, length);
-      halo_exchange_pull(params, cells, length, neighbours, buf);
-      timestep_1(params, tot_cells, cells, obstacles, av_vels, tt, length);
+      accelerate_flow_1(params, cells, obstacles, accelerating_row);
+      halo_exchange_pull(params, cells, neighbours, buf);
+      timestep_1(params, tot_cells, cells, obstacles, av_vels, tt);
 
-      accelerate_flow_2(params, cells, obstacles, accelerating_row, length);
-      halo_exchange_push(params, cells, length, neighbours, buf);
-      timestep_2(params, tot_cells, cells, obstacles, av_vels, tt + 1, length);
+      accelerate_flow_2(params, cells, obstacles, accelerating_row);
+      halo_exchange_push(params, cells, neighbours, buf);
+      timestep_2(params, tot_cells, cells, obstacles, av_vels, tt + 1);
     }
   }
   else {
     for (int tt = 0; tt < params.maxIters; tt+=2) {
-      halo_exchange_pull(params, cells, length, neighbours, buf);
-      timestep_1(params, tot_cells, cells, obstacles, av_vels, tt, length);
+      halo_exchange_pull(params, cells, neighbours, buf);
+      timestep_1(params, tot_cells, cells, obstacles, av_vels, tt);
 
-      halo_exchange_push(params, cells, length, neighbours, buf);
-      timestep_2(params, tot_cells, cells, obstacles, av_vels, tt + 1, length);
+      halo_exchange_push(params, cells, neighbours, buf);
+      timestep_2(params, tot_cells, cells, obstacles, av_vels, tt + 1);
     }
   }
 
@@ -279,15 +277,15 @@ int main(int argc, char* argv[])
   MPI_Type_commit(&mpi_speed_type);
 
   if (rank == MASTER) {
-    t_speed *global_cells = (t_speed*)malloc(sizeof(t_speed) * (params.global_nx * params.global_ny));
-    int *global_obstacles = (int*)malloc(sizeof(int) * (params.global_nx * params.global_ny));
+    t_speed *global_cells = (t_speed*)malloc(sizeof(t_speed) * (params.gx * params.gy));
+    int *global_obstacles = (int*)malloc(sizeof(int) * (params.gx * params.gy));
 
-    for (int ii = 1; ii < length[1] + 1; ++ii) {
-      for (int jj = 1; jj < length[0] + 1; ++jj) {
+    for (int ii = 1; ii < params.ly + 1; ++ii) {
+      for (int jj = 1; jj < params.lx + 1; ++jj) {
         for (int kk = 0; kk < NSPEEDS; ++kk) {
-          global_cells[(ii - 1) * params.global_nx + (jj - 1)].speeds[kk] = cells[ii * params.nx + jj].speeds[kk];
+          global_cells[(ii - 1) * params.gx + (jj - 1)].speeds[kk] = cells[ii * params.nx + jj].speeds[kk];
         }
-        global_obstacles[(ii - 1) * params.global_nx + (jj - 1)] = obstacles[(ii - 1) * length[0] + (jj - 1)];
+        global_obstacles[(ii - 1) * params.gx + (jj - 1)] = obstacles[(ii - 1) * params.lx + (jj - 1)];
       }
     }
     free(cells); 
@@ -302,29 +300,25 @@ int main(int argc, char* argv[])
     for (int source = 1; source < size; ++source) {
       MPI_Cart_coords(comm_cart, source, 2, coords);
 
-      start[0] = coords[0] * (params.global_nx / dims[0]);
-      start[1] = coords[1] * (params.global_ny / dims[1]);
+      int sx = coords[0] * (params.gx / dims[0]);
+      int sy = coords[1] * (params.gy / dims[1]);
 
-      length[0] = (params.global_nx / dims[0]);
-      length[1] = (params.global_ny / dims[1]);
+      int lx = (params.gx / dims[0]);
+      int ly = (params.gy / dims[1]);
 
-      int nx = length[0] + 2;
-      int ny = length[1] + 2;
+      int nx = lx + 2;
+      int ny = ly + 2;
 
-      for (int ii = 0; ii < length[1]; ++ii) {
-				MPI_Recv(&cells[(start[1] + ii) * params.global_nx + start[0]], length[0], mpi_speed_type, source, 0, MPI_COMM_WORLD, &status);
-        MPI_Recv(&obstacles[(start[1] + ii) * params.global_nx + start[0]], length[0], MPI_INT, source, 0, MPI_COMM_WORLD, &status);
+      for (int ii = 0; ii < ly; ++ii) {
+				MPI_Recv(&cells[(sy + ii) * params.gx + sx], lx, mpi_speed_type, source, 0, MPI_COMM_WORLD, &status);
+        MPI_Recv(&obstacles[(sy + ii) * params.gx + sx], lx, MPI_INT, source, 0, MPI_COMM_WORLD, &status);
       }
-
-      // gotta swap these back...
-      params.nx = params.global_nx;
-      params.ny = params.global_ny;
     }
   }
   else {
-    for (int ii = 1; ii < length[1] + 1; ++ii) {
-      MPI_Ssend(&cells[(ii * params.nx) + 1], length[0], mpi_speed_type, MASTER, 0, MPI_COMM_WORLD);
-      MPI_Ssend(&obstacles[(ii - 1) * length[0]], length[0], MPI_INT, MASTER, 0, MPI_COMM_WORLD);
+    for (int ii = 1; ii < params.ly + 1; ++ii) {
+      MPI_Ssend(&cells[(ii * params.nx) + 1], params.lx, mpi_speed_type, MASTER, 0, MPI_COMM_WORLD);
+      MPI_Ssend(&obstacles[(ii - 1) * params.lx], params.lx, MPI_INT, MASTER, 0, MPI_COMM_WORLD);
     }
   }
 
@@ -375,10 +369,10 @@ int initialise(const char* paramfile, const char* obstaclefile,
   }
 
   // read in the parameter values 
-  retval = fscanf(fp, "%d\n", &(params->global_nx));
+  retval = fscanf(fp, "%d\n", &(params->gx));
   if (retval != 1) die("could not read param file: nx", __LINE__, __FILE__);
 
-  retval = fscanf(fp, "%d\n", &(params->global_ny));
+  retval = fscanf(fp, "%d\n", &(params->gy));
   if (retval != 1) die("could not read param file: ny", __LINE__, __FILE__);
 
   retval = fscanf(fp, "%d\n", &(params->maxIters));
@@ -404,16 +398,14 @@ int initialise(const char* paramfile, const char* obstaclefile,
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
   MPI_Comm_size(MPI_COMM_WORLD, &size);
 
-  int start[2];
-  start[0] = coords[0] * (params->global_nx / dims[0]);
-  start[1] = coords[1] * (params->global_ny / dims[1]);
+  int sx = coords[0] * (params->gx / dims[0]); // starting x position
+  int sy = coords[1] * (params->gy / dims[1]); // starting y position
 
-  int length[2];
-  length[0] = (params->global_nx / dims[0]);
-  length[1] = (params->global_ny / dims[1]);
+  params->lx = (params->gx / dims[0]);
+  params->ly = (params->gy / dims[1]);
 
-  params->nx = length[0] + 2;
-  params->ny = length[1] + 2;
+  params->nx = params->lx + 2;
+  params->ny = params->ly + 2;
 
 	// === ALLOCATE MEMORY ===
 
@@ -422,7 +414,7 @@ int initialise(const char* paramfile, const char* obstaclefile,
   if (*cells_ptr == NULL) die("cannot allocate memory for cells", __LINE__, __FILE__);
 
   // the map of obstacles 
-  *obstacles_ptr = (int*)malloc(sizeof(int) * (length[0] * length[1]));
+  *obstacles_ptr = (int*)malloc(sizeof(int) * (params->lx * params->ly));
   if (*obstacles_ptr == NULL) die("cannot allocate column memory for obstacles", __LINE__, __FILE__);
 
 	// === INITIALISE CELL GRID ===
@@ -432,9 +424,9 @@ int initialise(const char* paramfile, const char* obstaclefile,
   float w1 = params->density        / 9.0f ;
   float w2 = params->density        / 36.0f;
 
-  for (int ii = 1; ii < length[1] + 1; ii++)
+  for (int ii = 1; ii < params->ly + 1; ii++)
   {
-    for (int jj = 1; jj < length[0] + 1; jj++)
+    for (int jj = 1; jj < params->lx + 1; jj++)
     {
       // centre 
       (*cells_ptr)[ii * params->nx + jj].speeds[0] = w0;
@@ -454,11 +446,11 @@ int initialise(const char* paramfile, const char* obstaclefile,
   // === INITIALISE OBSTACLE GRID ===
 
   // first set all cells in obstacle array to zero 
-  for (int ii = 0; ii < length[1]; ii++)
+  for (int ii = 0; ii < params->ly; ii++)
   {
-    for (int jj = 0; jj < length[0]; jj++)
+    for (int jj = 0; jj < params->lx; jj++)
     {
-      (*obstacles_ptr)[ii * length[0] + jj] = 0;
+      (*obstacles_ptr)[ii * params->lx + jj] = 0;
     }
   }
 
@@ -475,14 +467,14 @@ int initialise(const char* paramfile, const char* obstaclefile,
   {
     // some checks 
     if (retval != 3) die("expected 3 values per line in obstacle file", __LINE__, __FILE__);
-    if (xx < 0 || xx > params->global_nx - 1) die("obstacle x-coord out of range", __LINE__, __FILE__);
-    if (yy < 0 || yy > params->global_ny - 1) die("obstacle y-coord out of range", __LINE__, __FILE__);
+    if (xx < 0 || xx > params->gx - 1) die("obstacle x-coord out of range", __LINE__, __FILE__);
+    if (yy < 0 || yy > params->gy - 1) die("obstacle y-coord out of range", __LINE__, __FILE__);
     if (blocked != 1) die("obstacle blocked value should be 1", __LINE__, __FILE__);
 
     // assign to array (only if within assigned region)
-    if ((start[0] <= xx && xx < start[0] + length[0]) && 
-        (start[1] <= yy && yy < start[1] + length[1])) {
-      (*obstacles_ptr)[(yy - start[1]) * length[0] + (xx - start[0])] = blocked;
+    if ((sx <= xx && xx < sx + params->lx) && 
+        (sy <= yy && yy < sy + params->ly)) {
+      (*obstacles_ptr)[(yy - sy) * params->lx + (xx - sx)] = blocked;
     }
   }
 
@@ -524,13 +516,13 @@ float total_density(const t_param params, t_speed* cells)
   float total = 0.0f; // accumulator
 
   ////#pragma omp parallel for default(none) shared(cells) schedule(static) reduction(+:total)
-  for (int ii = 0; ii < params.ny; ii++)
+  for (int ii = 0; ii < params.gy; ii++)
   {
-    for (int jj = 0; jj < params.nx; jj++)
+    for (int jj = 0; jj < params.gx; jj++)
     {
       for (int kk = 0; kk < NSPEEDS; kk++)
       {
-        total += cells[ii * params.nx + jj].speeds[kk];
+        total += cells[ii * params.gx + jj].speeds[kk];
       }
     }
   }
@@ -555,12 +547,12 @@ int write_values(const t_param params, t_speed* cells, int* obstacles, float* av
     die("could not open file output file", __LINE__, __FILE__);
   }
 
-  for (int ii = 0; ii < params.ny; ii++)
+  for (int ii = 0; ii < params.gy; ii++)
   {
-    for (int jj = 0; jj < params.nx; jj++)
+    for (int jj = 0; jj < params.gx; jj++)
     {
       // an occupied cell 
-      if (obstacles[ii * params.nx + jj])
+      if (obstacles[ii * params.gx + jj])
       {
         u_x = u_y = u = 0.0f;
         pressure = params.density * c_sq;
@@ -572,24 +564,24 @@ int write_values(const t_param params, t_speed* cells, int* obstacles, float* av
 
         for (int kk = 0; kk < NSPEEDS; kk++)
         {
-          local_density += cells[ii * params.nx + jj].speeds[kk];
+          local_density += cells[ii * params.gx + jj].speeds[kk];
         }
 
         // compute x velocity component 
-        u_x = (cells[ii * params.nx + jj].speeds[1]
-               + cells[ii * params.nx + jj].speeds[5]
-               + cells[ii * params.nx + jj].speeds[8]
-               - (cells[ii * params.nx + jj].speeds[3]
-                  + cells[ii * params.nx + jj].speeds[6]
-                  + cells[ii * params.nx + jj].speeds[7]))
+        u_x = (cells[ii * params.gx + jj].speeds[1]
+               + cells[ii * params.gx + jj].speeds[5]
+               + cells[ii * params.gx + jj].speeds[8]
+               - (cells[ii * params.gx + jj].speeds[3]
+                  + cells[ii * params.gx + jj].speeds[6]
+                  + cells[ii * params.gx + jj].speeds[7]))
               / local_density;
         // compute y velocity component 
-        u_y = (cells[ii * params.nx + jj].speeds[2]
-               + cells[ii * params.nx + jj].speeds[5]
-               + cells[ii * params.nx + jj].speeds[6]
-               - (cells[ii * params.nx + jj].speeds[4]
-                  + cells[ii * params.nx + jj].speeds[7]
-                  + cells[ii * params.nx + jj].speeds[8]))
+        u_y = (cells[ii * params.gx + jj].speeds[2]
+               + cells[ii * params.gx + jj].speeds[5]
+               + cells[ii * params.gx + jj].speeds[6]
+               - (cells[ii * params.gx + jj].speeds[4]
+                  + cells[ii * params.gx + jj].speeds[7]
+                  + cells[ii * params.gx + jj].speeds[8]))
               / local_density;
         // compute norm of velocity 
         u = sqrtf((u_x * u_x) + (u_y * u_y));
@@ -598,7 +590,7 @@ int write_values(const t_param params, t_speed* cells, int* obstacles, float* av
       }
 
       // write to file 
-      fprintf(fp, "%d %d %.12E %.12E %.12E %.12E %d\n", jj, ii, u_x, u_y, u, pressure, obstacles[ii * params.nx + jj]);
+      fprintf(fp, "%d %d %.12E %.12E %.12E %.12E %d\n", jj, ii, u_x, u_y, u, pressure, obstacles[ii * params.gx + jj]);
     }
   }
 
@@ -639,16 +631,14 @@ void usage(const char* exe)
 // === HALO EXCHANGE ===
 // =====================
 
-int halo_exchange_pull(const t_param params, t_speed* restrict cells, 
-                       int *length, int *neighbours, 
-                       float *buf) 
+int halo_exchange_pull(const t_param params, t_speed* restrict cells, int *neighbours, float *buf) 
 {
   MPI_Status status;
   int line;
 
   // === COLUMN ===
 
-  line = length[0];
+  line = params.lx;
   for (int ii = 1; ii < params.ny - 1; ++ii) {
     buf[ii * 3    ] = cells[ii * params.nx + line].speeds[5];
     buf[ii * 3 + 1] = cells[ii * params.nx + line].speeds[1];
@@ -668,7 +658,7 @@ int halo_exchange_pull(const t_param params, t_speed* restrict cells,
 
   // === ROW ===
 
-  line = length[1];
+  line = params.ly;
   for (int jj = 1; jj < params.nx - 1; ++jj) {
     buf[jj * 3    ] = cells[line * params.nx + jj].speeds[6];
     buf[jj * 3 + 1] = cells[line * params.nx + jj].speeds[2];
@@ -699,7 +689,7 @@ int halo_exchange_pull(const t_param params, t_speed* restrict cells,
                        neighbours[2], 0, neighbours[0],  0,
                        MPI_COMM_WORLD, &status);
 
-  line = length[0] + 1;
+  line = params.lx + 1;
   for (int ii = 1; ii < params.ny - 1; ++ii) {
     cells[ii * params.nx + line].speeds[6] = buf[ii * 3    ];
     cells[ii * params.nx + line].speeds[3] = buf[ii * 3 + 1];
@@ -719,7 +709,7 @@ int halo_exchange_pull(const t_param params, t_speed* restrict cells,
                        neighbours[3], 0, neighbours[1],  0,
                        MPI_COMM_WORLD, &status);
 
-  line = length[1] + 1;
+  line = params.ly + 1;
   for (int jj = 1; jj < params.nx - 1; ++jj) {
     cells[line * params.nx + jj].speeds[7] = buf[jj * 3    ];
     cells[line * params.nx + jj].speeds[4] = buf[jj * 3 + 1];
@@ -730,43 +720,41 @@ int halo_exchange_pull(const t_param params, t_speed* restrict cells,
 
   float corner; 
 
-  corner = cells[length[1] * params.nx + length[0]].speeds[5];
+  corner = cells[params.ly * params.nx + params.lx].speeds[5];
   MPI_Sendrecv_replace(&corner, 1, MPI_FLOAT, 
                        neighbours[4], 0, neighbours[6], 0,
                        MPI_COMM_WORLD, &status);
   cells[0 * params.nx + 0].speeds[5] = corner;
 
-  corner = cells[length[1] * params.nx + 1].speeds[6];
+  corner = cells[params.ly * params.nx + 1].speeds[6];
   MPI_Sendrecv_replace(&corner, 1, MPI_FLOAT, 
                        neighbours[5], 0, neighbours[7], 0,
                        MPI_COMM_WORLD, &status);
-  cells[0 * params.nx + (length[0] + 1)].speeds[6] = corner;
+  cells[0 * params.nx + (params.lx + 1)].speeds[6] = corner;
 
   corner = cells[1 * params.nx + 1].speeds[7];
   MPI_Sendrecv_replace(&corner, 1, MPI_FLOAT, 
                        neighbours[6], 0, neighbours[4], 0,
                        MPI_COMM_WORLD, &status);
-  cells[(length[1] + 1) * params.nx + (length[0] + 1)].speeds[7] = corner;
+  cells[(params.ly + 1) * params.nx + (params.lx + 1)].speeds[7] = corner;
 
-  corner = cells[1 * params.nx + length[0]].speeds[8];
+  corner = cells[1 * params.nx + params.lx].speeds[8];
   MPI_Sendrecv_replace(&corner, 1, MPI_FLOAT, 
                        neighbours[7], 0, neighbours[5], 0,
                        MPI_COMM_WORLD, &status);
-  cells[(length[1] + 1) * params.nx + 0].speeds[8] = corner;
+  cells[(params.ly + 1) * params.nx + 0].speeds[8] = corner;
 
   return EXIT_SUCCESS;
 }
 
-int halo_exchange_push(const t_param params, t_speed* restrict cells, 
-                       int *length, int *neighbours,
-                       float *buf) 
+int halo_exchange_push(const t_param params, t_speed* restrict cells, int *neighbours, float *buf) 
 {
   MPI_Status status;
   int line;
 
   // === COLUMN ===
 
-  line = length[0] + 1;
+  line = params.lx + 1;
   for (int ii = 1; ii < params.ny - 1; ++ii) {
     buf[ii * 3    ] = cells[ii * params.nx + line].speeds[6];
     buf[ii * 3 + 1] = cells[ii * params.nx + line].speeds[3];
@@ -786,7 +774,7 @@ int halo_exchange_push(const t_param params, t_speed* restrict cells,
 
   // === ROW ===
 
-  line = length[1] + 1;
+  line = params.ly + 1;
   for (int jj = 1; jj < params.nx - 1; ++jj) {
     buf[jj * 3    ] = cells[line * params.nx + jj].speeds[7];
     buf[jj * 3 + 1] = cells[line * params.nx + jj].speeds[4];
@@ -817,7 +805,7 @@ int halo_exchange_push(const t_param params, t_speed* restrict cells,
                        neighbours[2], 0, neighbours[0],  0,
                        MPI_COMM_WORLD, &status);
 
-  line = length[0];
+  line = params.lx;
   for (int ii = 1; ii < params.ny - 1; ++ii) {
     cells[ii * params.nx + line].speeds[5] = buf[ii * 3    ];
     cells[ii * params.nx + line].speeds[1] = buf[ii * 3 + 1];
@@ -837,7 +825,7 @@ int halo_exchange_push(const t_param params, t_speed* restrict cells,
                        neighbours[3], 0, neighbours[1],  0,
                        MPI_COMM_WORLD, &status);
 
-  line = length[1];
+  line = params.ly;
   for (int jj = 1; jj < params.nx - 1; ++jj) {
     cells[line * params.nx + jj].speeds[6] = buf[jj * 3    ];
     cells[line * params.nx + jj].speeds[2] = buf[jj * 3 + 1];
@@ -848,29 +836,29 @@ int halo_exchange_push(const t_param params, t_speed* restrict cells,
 
   float corner; 
 
-  corner = cells[(length[1] + 1) * params.nx + (length[0] + 1)].speeds[7];
+  corner = cells[(params.ly + 1) * params.nx + (params.lx + 1)].speeds[7];
   MPI_Sendrecv_replace(&corner, 1, MPI_FLOAT, 
                        neighbours[4], 0, neighbours[6], 0,
                        MPI_COMM_WORLD, &status);
   cells[1 * params.nx + 1].speeds[7] = corner;
 
-  corner = cells[(length[1] + 1) * params.nx + 0].speeds[8];
+  corner = cells[(params.ly + 1) * params.nx + 0].speeds[8];
   MPI_Sendrecv_replace(&corner, 1, MPI_FLOAT, 
                        neighbours[5], 0, neighbours[7], 0,
                        MPI_COMM_WORLD, &status);
-  cells[1 * params.nx + length[0]].speeds[8] = corner;
+  cells[1 * params.nx + params.lx].speeds[8] = corner;
 
   corner = cells[0 * params.nx + 0].speeds[5];
   MPI_Sendrecv_replace(&corner, 1, MPI_FLOAT, 
                        neighbours[6], 0, neighbours[4], 0,
                        MPI_COMM_WORLD, &status);
-  cells[length[1] * params.nx + length[0]].speeds[5] = corner;
+  cells[params.ly * params.nx + params.lx].speeds[5] = corner;
 
-  corner = cells[0 * params.nx + (length[0] + 1)].speeds[6];
+  corner = cells[0 * params.nx + (params.lx + 1)].speeds[6];
   MPI_Sendrecv_replace(&corner, 1, MPI_FLOAT, 
                        neighbours[7], 0, neighbours[5], 0,
                        MPI_COMM_WORLD, &status);
-  cells[length[1] * params.nx + 1].speeds[6] = corner;
+  cells[params.ly * params.nx + 1].speeds[6] = corner;
 
   return EXIT_SUCCESS;
 }
@@ -887,7 +875,7 @@ int gather_av_velocities(float* restrict av_vels, int tt, float local_tot_u, int
 // === SEPERATED FUNCTIONS ===
 // ===========================
 
-void accelerate_flow_1(const t_param params, t_speed* cells, int* obstacles, const int accelerating_row, int *length)
+void accelerate_flow_1(const t_param params, t_speed* cells, int* obstacles, const int accelerating_row)
 {
   // compute weighting factors
   const float w1a = params.density * params.accel / 9.0f;
@@ -896,11 +884,11 @@ void accelerate_flow_1(const t_param params, t_speed* cells, int* obstacles, con
   const int row2 = accelerating_row;
 
   //#pragma omp for schedule(static)
-  for (int jj = 1; jj < length[0] + 1; ++jj)
+  for (int jj = 1; jj < params.lx + 1; ++jj)
   {
     // if the cell is not occupied and
     // we don't send a negative density
-    if (!obstacles[row2 * length[0] + (jj - 1)]
+    if (!obstacles[row2 * params.lx + (jj - 1)]
         && (cells[(row2 + 1) * params.nx + jj].speeds[3] - w1a) > 0.0f
         && (cells[(row2 + 1) * params.nx + jj].speeds[6] - w2a) > 0.0f
         && (cells[(row2 + 1) * params.nx + jj].speeds[7] - w2a) > 0.0f)
@@ -917,7 +905,7 @@ void accelerate_flow_1(const t_param params, t_speed* cells, int* obstacles, con
   }
 }
 
-void accelerate_flow_2(const t_param params, t_speed* cells, int* obstacles, const int accelerating_row, int *length)
+void accelerate_flow_2(const t_param params, t_speed* cells, int* obstacles, const int accelerating_row)
 {
   // compute weighting factors
   const float w1a = params.density * params.accel / 9.0f;
@@ -928,14 +916,14 @@ void accelerate_flow_2(const t_param params, t_speed* cells, int* obstacles, con
   const int row3 = accelerating_row - 1;
 
   //#pragma omp for schedule(static)
-  for (int jj = 1; jj < length[0] + 1; ++jj)
+  for (int jj = 1; jj < params.lx + 1; ++jj)
   {
     int x_e = jj + 1;
     int x_w = jj - 1;
 
     // if the cell is not occupied and
     // we don't send a negative density
-    if (!obstacles[row2 * length[0] + (jj - 1)]
+    if (!obstacles[row2 * params.lx + (jj - 1)]
         && (cells[(row2 + 1) * params.nx + x_w].speeds[1] - w1a) > 0.0f
         && (cells[(row1 + 1) * params.nx + x_w].speeds[8] - w2a) > 0.0f
         && (cells[(row3 + 1) * params.nx + x_w].speeds[5] - w2a) > 0.0f)
@@ -953,8 +941,7 @@ void accelerate_flow_2(const t_param params, t_speed* cells, int* obstacles, con
 }
 
 
-void timestep_1(const t_param params, const float tot_cells, 
-                t_speed* restrict cells, int *restrict obstacles, float* av_vels, int tt, int *length)
+void timestep_1(const t_param params, const float tot_cells, t_speed* restrict cells, int *restrict obstacles, float* av_vels, int tt)
 {
   // collision constants
   const float w[NSPEEDS] = { 4.0f / 9.0f, 
@@ -970,11 +957,11 @@ void timestep_1(const t_param params, const float tot_cells,
   // loop over the cells in the grid
   //#pragma omp for schedule(static)
   //for (int ii = 0; ii < params.ny; ++ii)
-  for (int ii = 1; ii < length[1] + 1; ++ii)
+  for (int ii = 1; ii < params.ly + 1; ++ii)
   {
-    for (int jj = 1; jj < length[0] + 1; ++jj)
+    for (int jj = 1; jj < params.lx + 1; ++jj)
     {
-      if (!obstacles[(ii - 1) * length[0] + (jj - 1)])
+      if (!obstacles[(ii - 1) * params.lx + (jj - 1)])
       { 
         // =================
         // === PROPAGATE === aka. streaming
@@ -1066,8 +1053,7 @@ void timestep_1(const t_param params, const float tot_cells,
   gather_av_velocities(av_vels, tt, tot_u, tot_cells);
 }
 
-void timestep_2(const t_param params, const float tot_cells, 
-                t_speed* restrict cells, int *restrict obstacles, float* av_vels, int tt, int *length)
+void timestep_2(const t_param params, const float tot_cells, t_speed* restrict cells, int *restrict obstacles, float* av_vels, int tt)
 {
   // collision constants
   const float w[NSPEEDS] = { 4.0f / 9.0f, 
@@ -1083,11 +1069,11 @@ void timestep_2(const t_param params, const float tot_cells,
   // loop over the cells in the grid
   //#pragma omp for schedule(static)
   //for (int ii = 0; ii < params.ny; ++ii)
-  for (int ii = 1; ii < length[1] + 1; ++ii)
+  for (int ii = 1; ii < params.ly + 1; ++ii)
   {
-    for (int jj = 1; jj < length[0] + 1; ++jj)
+    for (int jj = 1; jj < params.lx + 1; ++jj)
     {
-      if (!obstacles[(ii - 1) * length[0] + (jj - 1)])
+      if (!obstacles[(ii - 1) * params.lx + (jj - 1)])
       { 
         // ===================
         // === "PROPAGATE" === aka. streaming
