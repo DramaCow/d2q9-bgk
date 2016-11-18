@@ -268,7 +268,7 @@ int main(int argc, char* argv[])
   free(buf);
 
   // === DEFINE T_SPEED MPI TYPE ===
-  
+ 
   MPI_Datatype mpi_speed_type;
   int blocklen[1] = { NSPEEDS };
   MPI_Aint offsets[1] = { offsetof(t_speed, speeds) };
@@ -293,25 +293,32 @@ int main(int argc, char* argv[])
     cells = global_cells;
     obstacles = global_obstacles;
 
-    MPI_Status status;
-
     // receive segment from each node
     int coords[2], start[2], length[2];
     for (int source = 1; source < size; ++source) {
       MPI_Cart_coords(comm_cart, source, 2, coords);
 
-      int sx = coords[0] * (params.gx / dims[0]);
-      int sy = coords[1] * (params.gy / dims[1]);
+      int rx = params.gx % dims[0];
+      int ry = params.gy % dims[1];
 
-      int lx = (params.gx / dims[0]);
-      int ly = (params.gy / dims[1]);
+      int sx = coords[0] * (params.gx / dims[0])   // starting x position
+               + (coords[0] < rx ? coords[0] : rx); 
+      int sy = coords[1] * (params.gy / dims[1])   // starting y position
+               + (coords[1] < ry ? coords[1] : ry); 
+
+      int lx = (params.gx / dims[0])
+               + (coords[0] < rx ? 1 : 0);
+      int ly = (params.gy / dims[1])
+               + (coords[1] < ry ? 1 : 0);
 
       int nx = lx + 2;
       int ny = ly + 2;
 
+      printf("%d : (%d, %d, %d, %d)\n", source, sx, sy, lx, ly);
+ 
       for (int ii = 0; ii < ly; ++ii) {
-				MPI_Recv(&cells[(sy + ii) * params.gx + sx], lx, mpi_speed_type, source, 0, MPI_COMM_WORLD, &status);
-        MPI_Recv(&obstacles[(sy + ii) * params.gx + sx], lx, MPI_INT, source, 0, MPI_COMM_WORLD, &status);
+				MPI_Recv(&cells[(sy + ii) * params.gx + sx], lx, mpi_speed_type, source, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        MPI_Recv(&obstacles[(sy + ii) * params.gx + sx], lx, MPI_INT, source, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
       }
     }
   }
@@ -398,11 +405,18 @@ int initialise(const char* paramfile, const char* obstaclefile,
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
   MPI_Comm_size(MPI_COMM_WORLD, &size);
 
-  int sx = coords[0] * (params->gx / dims[0]); // starting x position
-  int sy = coords[1] * (params->gy / dims[1]); // starting y position
+  int rx = params->gx % dims[0];
+  int ry = params->gy % dims[1];
 
-  params->lx = (params->gx / dims[0]);
-  params->ly = (params->gy / dims[1]);
+  int sx = coords[0] * (params->gx / dims[0])   // starting x position
+           + (coords[0] < rx ? coords[0] : rx); 
+  int sy = coords[1] * (params->gy / dims[1])   // starting y position
+           + (coords[1] < ry ? coords[1] : ry); 
+
+  params->lx = (params->gx / dims[0])
+               + (coords[0] < rx ? 1 : 0);
+  params->ly = (params->gy / dims[1])
+               + (coords[1] < ry ? 1 : 0);
 
   params->nx = params->lx + 2;
   params->ny = params->ly + 2;
