@@ -738,31 +738,21 @@ int halo_exchange_pull(const t_param params, t_speed* restrict cells, int *neigh
 
   // === CORNERS ===
 
-  float corner; 
+  MPI_Sendrecv(&cells[params.ly * params.nx + params.lx].speeds[5], 1, MPI_FLOAT, neighbours[4], 0, 
+               &cells[0 * params.nx + 0].speeds[5],                 1, MPI_FLOAT, neighbours[6], 0,
+               MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
-  corner = cells[params.ly * params.nx + params.lx].speeds[5];
-  MPI_Sendrecv_replace(&corner, 1, MPI_FLOAT, 
-                       neighbours[4], 0, neighbours[6], 0,
-                       MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-  cells[0 * params.nx + 0].speeds[5] = corner;
+  MPI_Sendrecv(&cells[params.ly * params.nx + 1].speeds[6],       1, MPI_FLOAT, neighbours[5], 0, 
+               &cells[0 * params.nx + (params.lx + 1)].speeds[6], 1, MPI_FLOAT, neighbours[7], 0,
+               MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+  
+  MPI_Sendrecv(&cells[1 * params.nx + 1].speeds[7],                             1, MPI_FLOAT, neighbours[6], 0, 
+               &cells[(params.ly + 1) * params.nx + (params.lx + 1)].speeds[7], 1, MPI_FLOAT, neighbours[4], 0,
+               MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
-  corner = cells[params.ly * params.nx + 1].speeds[6];
-  MPI_Sendrecv_replace(&corner, 1, MPI_FLOAT, 
-                       neighbours[5], 0, neighbours[7], 0,
-                       MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-  cells[0 * params.nx + (params.lx + 1)].speeds[6] = corner;
-
-  corner = cells[1 * params.nx + 1].speeds[7];
-  MPI_Sendrecv_replace(&corner, 1, MPI_FLOAT, 
-                       neighbours[6], 0, neighbours[4], 0,
-                       MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-  cells[(params.ly + 1) * params.nx + (params.lx + 1)].speeds[7] = corner;
-
-  corner = cells[1 * params.nx + params.lx].speeds[8];
-  MPI_Sendrecv_replace(&corner, 1, MPI_FLOAT, 
-                       neighbours[7], 0, neighbours[5], 0,
-                       MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-  cells[(params.ly + 1) * params.nx + 0].speeds[8] = corner;
+  MPI_Sendrecv(&cells[1 * params.nx + params.lx].speeds[8],       1, MPI_FLOAT, neighbours[7], 0, 
+               &cells[(params.ly + 1) * params.nx + 0].speeds[8], 1, MPI_FLOAT, neighbours[5], 0,
+               MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
   return EXIT_SUCCESS;
 }
@@ -853,31 +843,21 @@ int halo_exchange_push(const t_param params, t_speed* restrict cells, int *neigh
 
   // === CORNERS ===
 
-  float corner; 
+  MPI_Sendrecv(&cells[(params.ly + 1) * params.nx + (params.lx + 1)].speeds[7], 1, MPI_FLOAT, neighbours[4], 0, 
+               &cells[1 * params.nx + 1].speeds[7],                             1, MPI_FLOAT, neighbours[6], 0,
+               MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
-  corner = cells[(params.ly + 1) * params.nx + (params.lx + 1)].speeds[7];
-  MPI_Sendrecv_replace(&corner, 1, MPI_FLOAT, 
-                       neighbours[4], 0, neighbours[6], 0,
-                       MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-  cells[1 * params.nx + 1].speeds[7] = corner;
+  MPI_Sendrecv(&cells[(params.ly + 1) * params.nx + 0].speeds[8], 1, MPI_FLOAT, neighbours[5], 0, 
+               &cells[1 * params.nx + params.lx].speeds[8],       1, MPI_FLOAT, neighbours[7], 0,
+               MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
-  corner = cells[(params.ly + 1) * params.nx + 0].speeds[8];
-  MPI_Sendrecv_replace(&corner, 1, MPI_FLOAT, 
-                       neighbours[5], 0, neighbours[7], 0,
-                       MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-  cells[1 * params.nx + params.lx].speeds[8] = corner;
+  MPI_Sendrecv(&cells[0 * params.nx + 0].speeds[5],                 1, MPI_FLOAT, neighbours[6], 0, 
+               &cells[params.ly * params.nx + params.lx].speeds[5], 1, MPI_FLOAT, neighbours[4], 0,
+               MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
-  corner = cells[0 * params.nx + 0].speeds[5];
-  MPI_Sendrecv_replace(&corner, 1, MPI_FLOAT, 
-                       neighbours[6], 0, neighbours[4], 0,
-                       MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-  cells[params.ly * params.nx + params.lx].speeds[5] = corner;
-
-  corner = cells[0 * params.nx + (params.lx + 1)].speeds[6];
-  MPI_Sendrecv_replace(&corner, 1, MPI_FLOAT, 
-                       neighbours[7], 0, neighbours[5], 0,
-                       MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-  cells[params.ly * params.nx + 1].speeds[6] = corner;
+  MPI_Sendrecv(&cells[0 * params.nx + (params.lx + 1)].speeds[6], 1, MPI_FLOAT, neighbours[7], 0, 
+               &cells[params.ly * params.nx + 1].speeds[6],       1, MPI_FLOAT, neighbours[5], 0,
+               MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
   return EXIT_SUCCESS;
 }
