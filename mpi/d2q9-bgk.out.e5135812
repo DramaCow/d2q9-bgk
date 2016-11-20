@@ -1,0 +1,9 @@
+/cm/local/apps/torque/4.2.4.1/spool/mom_priv/jobs/5135812.master.cm.cluster.SC: line 1: Running: command not found
+/cm/local/apps/torque/4.2.4.1/spool/mom_priv/jobs/5135812.master.cm.cluster.SC: line 2: Time: command not found
+/cm/local/apps/torque/4.2.4.1/spool/mom_priv/jobs/5135812.master.cm.cluster.SC: line 3: Directory: command not found
+/cm/local/apps/torque/4.2.4.1/spool/mom_priv/jobs/5135812.master.cm.cluster.SC: line 4: PBS: command not found
+/cm/local/apps/torque/4.2.4.1/spool/mom_priv/jobs/5135812.master.cm.cluster.SC: line 5: This: command not found
+/cm/local/apps/torque/4.2.4.1/spool/mom_priv/jobs/5135812.master.cm.cluster.SC: line 6: node31-029: command not found
+/cm/local/apps/torque/4.2.4.1/spool/mom_priv/jobs/5135812.master.cm.cluster.SC: line 7: syntax error near unexpected token `('
+/cm/local/apps/torque/4.2.4.1/spool/mom_priv/jobs/5135812.master.cm.cluster.SC: line 7: `rank[1, 5 : 13] --> (21, 14, 5, 12, 22, 6, 4, 20)'
+Warning: Permanently added 'node32-003,10.131.0.147' (RSA) to the list of known hosts.
