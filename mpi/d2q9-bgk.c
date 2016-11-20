@@ -95,17 +95,15 @@ int initialise(const char* paramfile, const char* obstaclefile,
                int** obstacles_ptr, float** av_vels_ptr,
                int *coords, int *dims);
 
-// halo exchange only necessary every other timestep
-int halo_exchange_pull(const t_param params, t_speed* restrict cells, int *neighbours, float *buf, float *recvbuf);
-int halo_exchange_push(const t_param params, t_speed* restrict cells, int *neighbours, float *sendbuf, float *recvbuf);
-
 int gather_av_velocities(float* restrict av_vels, int tt, float tot_u, int tot_cells);
 
 // seperate functions
 void accelerate_flow_1(const t_param params, t_speed* cells, int* obstacles, const int accelerating_row);
 void accelerate_flow_2(const t_param params, t_speed* cells, int* obstacles, const int accelerating_row);
-void timestep_1(const t_param params, const float tot_cells, t_speed* restrict cells, int *restrict obstacles, float* av_vels, int tt);
-void timestep_2(const t_param params, const float tot_cells, t_speed* restrict cells, int *restrict obstacles, float* av_vels, int tt);
+void timestep_1(const t_param params, const float tot_cells, t_speed* restrict cells, int *restrict obstacles, float* av_vels, int tt,
+                int *neighbours, float *sendbuf, float *recvbuf);
+void timestep_2(const t_param params, const float tot_cells, t_speed* restrict cells, int *restrict obstacles, float* av_vels, int tt,
+                int *neighbours, float *sendbuf, float *recvbuf);
 
 int write_values(const t_param params, t_speed* cells, int *obstacles, float *av_vels);
 
@@ -247,21 +245,16 @@ int main(int argc, char* argv[])
     printf("(%d, %d) of %d -- [%d, %d]\n", coords[0], coords[1], rank, sy, params.ly);
     for (int tt = 0; tt < params.maxIters; tt+=2) {
       accelerate_flow_1(params, cells, obstacles, accelerating_row);
-      halo_exchange_pull(params, cells, neighbours, sendbuf, recvbuf);
-      timestep_1(params, tot_cells, cells, obstacles, av_vels, tt);
+      timestep_1(params, tot_cells, cells, obstacles, av_vels, tt, neighbours, sendbuf, recvbuf);
 
       accelerate_flow_2(params, cells, obstacles, accelerating_row);
-      halo_exchange_push(params, cells, neighbours, sendbuf, recvbuf);
-      timestep_2(params, tot_cells, cells, obstacles, av_vels, tt + 1);
+      timestep_2(params, tot_cells, cells, obstacles, av_vels, tt + 1, neighbours, sendbuf, recvbuf);
     }
   }
   else {
     for (int tt = 0; tt < params.maxIters; tt+=2) {
-      halo_exchange_pull(params, cells, neighbours, sendbuf, recvbuf);
-      timestep_1(params, tot_cells, cells, obstacles, av_vels, tt);
-
-      halo_exchange_push(params, cells, neighbours, sendbuf, recvbuf);
-      timestep_2(params, tot_cells, cells, obstacles, av_vels, tt + 1);
+      timestep_1(params, tot_cells, cells, obstacles, av_vels, tt, neighbours, sendbuf, recvbuf);
+      timestep_2(params, tot_cells, cells, obstacles, av_vels, tt + 1, neighbours, sendbuf, recvbuf);
     }
   }
 
@@ -650,11 +643,87 @@ void usage(const char* exe)
   exit(EXIT_FAILURE);
 }
 
-// =====================
-// === HALO EXCHANGE ===
-// =====================
 
-int halo_exchange_pull(const t_param params, t_speed* restrict cells, int *neighbours, float *sendbuf, float *recvbuf) 
+// ===========================
+// === SEPERATED FUNCTIONS ===
+// ===========================
+
+int gather_av_velocities(float* restrict av_vels, int tt, float local_tot_u, int tot_cells) {
+  float tot_u;
+  MPI_Reduce(&local_tot_u, &tot_u, 1, MPI_FLOAT, MPI_SUM, MASTER, MPI_COMM_WORLD);
+  av_vels[tt] = tot_u / tot_cells;
+
+  return EXIT_SUCCESS;
+}
+
+void accelerate_flow_1(const t_param params, t_speed* cells, int* obstacles, const int accelerating_row)
+{
+  // compute weighting factors
+  const float w1a = params.density * params.accel / 9.0f;
+  const float w2a = params.density * params.accel / 36.0f;
+  // rows used for accelerating flow
+  const int row2 = accelerating_row;
+
+  //#pragma omp for schedule(static)
+  for (int jj = 1; jj < params.lx + 1; ++jj)
+  {
+    // if the cell is not occupied and
+    // we don't send a negative density
+    if (!obstacles[row2 * params.lx + (jj - 1)]
+        && (cells[(row2 + 1) * params.nx + jj].speeds[3] - w1a) > 0.0f
+        && (cells[(row2 + 1) * params.nx + jj].speeds[6] - w2a) > 0.0f
+        && (cells[(row2 + 1) * params.nx + jj].speeds[7] - w2a) > 0.0f)
+    {
+      // increase 'east-side' densities 
+      cells[(row2 + 1) * params.nx + jj].speeds[1] += w1a;
+      cells[(row2 + 1) * params.nx + jj].speeds[5] += w2a;
+      cells[(row2 + 1) * params.nx + jj].speeds[8] += w2a;
+      // decrease 'west-side' densities 
+      cells[(row2 + 1) * params.nx + jj].speeds[3] -= w1a;
+      cells[(row2 + 1) * params.nx + jj].speeds[6] -= w2a;
+      cells[(row2 + 1) * params.nx + jj].speeds[7] -= w2a;
+    }
+  }
+}
+
+void accelerate_flow_2(const t_param params, t_speed* cells, int* obstacles, const int accelerating_row)
+{
+  // compute weighting factors
+  const float w1a = params.density * params.accel / 9.0f;
+  const float w2a = params.density * params.accel / 36.0f;
+  // rows used for accelerating flow
+  const int row1 = accelerating_row + 1;
+  const int row2 = accelerating_row;
+  const int row3 = accelerating_row - 1;
+
+  //#pragma omp for schedule(static)
+  for (int jj = 1; jj < params.lx + 1; ++jj)
+  {
+    int x_e = jj + 1;
+    int x_w = jj - 1;
+
+    // if the cell is not occupied and
+    // we don't send a negative density
+    if (!obstacles[row2 * params.lx + (jj - 1)]
+        && (cells[(row2 + 1) * params.nx + x_w].speeds[1] - w1a) > 0.0f
+        && (cells[(row1 + 1) * params.nx + x_w].speeds[8] - w2a) > 0.0f
+        && (cells[(row3 + 1) * params.nx + x_w].speeds[5] - w2a) > 0.0f)
+    {
+      // increase 'east-side' densities 
+      cells[(row2 + 1) * params.nx + x_e].speeds[3] += w1a;
+      cells[(row1 + 1) * params.nx + x_e].speeds[7] += w2a;
+      cells[(row3 + 1) * params.nx + x_e].speeds[6] += w2a;
+      // decrease 'west-side' densities 
+      cells[(row2 + 1) * params.nx + x_w].speeds[1] -= w1a;
+      cells[(row1 + 1) * params.nx + x_w].speeds[8] -= w2a;
+      cells[(row3 + 1) * params.nx + x_w].speeds[5] -= w2a;
+    }
+  }
+}
+
+
+void timestep_1(const t_param params, const float tot_cells, t_speed* restrict cells, int *restrict obstacles, float* av_vels, int tt,
+                int *neighbours, float *sendbuf, float *recvbuf)
 {
   MPI_Request request[16];
   int line;
@@ -733,176 +802,6 @@ int halo_exchange_pull(const t_param params, t_speed* restrict cells, int *neigh
     cells[line * params.nx + jj].speeds[8] = recvbuf[(params.lx * 3 + params.ly * 6) + (jj - 1) * 3 + 2];
   }
 
-  return EXIT_SUCCESS;
-}
-
-int halo_exchange_push(const t_param params, t_speed* restrict cells, int *neighbours, float *sendbuf, float *recvbuf) 
-{
-  MPI_Request request[16];
-  int line;
-
-  line = params.lx + 1;
-  for (int ii = 1; ii < params.ny - 1; ++ii) {
-    sendbuf[(ii - 1) * 3    ] = cells[ii * params.nx + line].speeds[6];
-    sendbuf[(ii - 1) * 3 + 1] = cells[ii * params.nx + line].speeds[3];
-    sendbuf[(ii - 1) * 3 + 2] = cells[ii * params.nx + line].speeds[7];
-  }
-  line = params.ly + 1;
-  for (int jj = 1; jj < params.nx - 1; ++jj) {
-    sendbuf[(params.ly * 3) + (jj - 1) * 3    ] = cells[line * params.nx + jj].speeds[7];
-    sendbuf[(params.ly * 3) + (jj - 1) * 3 + 1] = cells[line * params.nx + jj].speeds[4];
-    sendbuf[(params.ly * 3) + (jj - 1) * 3 + 2] = cells[line * params.nx + jj].speeds[8];
-  }
-  line = 0;
-  for (int ii = 1; ii < params.ny - 1; ++ii) {
-    sendbuf[(params.lx * 3 + params.ly * 3) + (ii - 1) * 3    ] = cells[ii * params.nx + line].speeds[5];
-    sendbuf[(params.lx * 3 + params.ly * 3) + (ii - 1) * 3 + 1] = cells[ii * params.nx + line].speeds[1];
-    sendbuf[(params.lx * 3 + params.ly * 3) + (ii - 1) * 3 + 2] = cells[ii * params.nx + line].speeds[8];
-  }
-  line = 0;
-  for (int jj = 1; jj < params.nx - 1; ++jj) {
-    sendbuf[(params.lx * 3 + params.ly * 6) + (jj - 1) * 3    ] = cells[line * params.nx + jj].speeds[6];
-    sendbuf[(params.lx * 3 + params.ly * 6) + (jj - 1) * 3 + 1] = cells[line * params.nx + jj].speeds[2];
-    sendbuf[(params.lx * 3 + params.ly * 6) + (jj - 1) * 3 + 2] = cells[line * params.nx + jj].speeds[5];
-  }
-
-  // corners
-  MPI_Isend(&sendbuf[0], params.ly * 3, MPI_FLOAT, neighbours[0], 0, MPI_COMM_WORLD, &request[0]);
-  MPI_Isend(&sendbuf[(params.ly * 3)], params.lx * 3, MPI_FLOAT, neighbours[1], 0, MPI_COMM_WORLD, &request[1]);
-  MPI_Isend(&sendbuf[(params.lx * 3 + params.ly * 3)], params.ly * 3, MPI_FLOAT, neighbours[2], 0, MPI_COMM_WORLD, &request[2]);
-  MPI_Isend(&sendbuf[(params.lx * 3 + params.ly * 6)], params.lx * 3, MPI_FLOAT, neighbours[3], 0, MPI_COMM_WORLD, &request[3]);
-  // edges
-  MPI_Isend(&cells[(params.ly + 1) * params.nx + (params.lx + 1)].speeds[7], 1, MPI_FLOAT, neighbours[4], 0, MPI_COMM_WORLD, &request[4]);
-  MPI_Isend(&cells[(params.ly + 1) * params.nx + 0].speeds[8], 1, MPI_FLOAT, neighbours[5], 0, MPI_COMM_WORLD, &request[5]);
-  MPI_Isend(&cells[0 * params.nx + 0].speeds[5], 1, MPI_FLOAT, neighbours[6], 0, MPI_COMM_WORLD, &request[6]);
-  MPI_Isend(&cells[0 * params.nx + (params.lx + 1)].speeds[6], 1, MPI_FLOAT, neighbours[7], 0, MPI_COMM_WORLD, &request[7]);
-  
-  // edges
-  MPI_Irecv(&recvbuf[0], params.ly * 3, MPI_FLOAT, neighbours[2], 0, MPI_COMM_WORLD, &request[8]);
-  MPI_Irecv(&recvbuf[(params.ly * 3)], params.lx * 3, MPI_FLOAT, neighbours[3], 0, MPI_COMM_WORLD, &request[9]);
-  MPI_Irecv(&recvbuf[(params.lx * 3 + params.ly * 3)], params.ly * 3, MPI_FLOAT, neighbours[0], 0, MPI_COMM_WORLD, &request[10]);
-  MPI_Irecv(&recvbuf[(params.lx * 3 + params.ly * 6)], params.lx * 3, MPI_FLOAT, neighbours[1], 0, MPI_COMM_WORLD, &request[11]);
-  // corners  
-  float corners[4];
-  MPI_Irecv(&corners[0], 1, MPI_FLOAT, neighbours[6], 0, MPI_COMM_WORLD, &request[12]);
-  MPI_Irecv(&corners[1], 1, MPI_FLOAT, neighbours[7], 0, MPI_COMM_WORLD, &request[13]);
-  MPI_Irecv(&corners[2], 1, MPI_FLOAT, neighbours[4], 0, MPI_COMM_WORLD, &request[14]);
-  MPI_Irecv(&corners[3], 1, MPI_FLOAT, neighbours[5], 0, MPI_COMM_WORLD, &request[15]);
-
-  MPI_Waitall(16, request, MPI_STATUS_IGNORE);
-
-  line = 1;
-  for (int ii = 1; ii < params.ny - 1; ++ii) {
-    cells[ii * params.nx + line].speeds[6] = recvbuf[(ii - 1) * 3    ];
-    cells[ii * params.nx + line].speeds[3] = recvbuf[(ii - 1) * 3 + 1];
-    cells[ii * params.nx + line].speeds[7] = recvbuf[(ii - 1) * 3 + 2];
-  }
-  line = 1;
-  for (int jj = 1; jj < params.nx - 1; ++jj) {
-    cells[line * params.nx + jj].speeds[7] = recvbuf[(params.ly * 3) + (jj - 1) * 3    ];
-    cells[line * params.nx + jj].speeds[4] = recvbuf[(params.ly * 3) + (jj - 1) * 3 + 1];
-    cells[line * params.nx + jj].speeds[8] = recvbuf[(params.ly * 3) + (jj - 1) * 3 + 2];
-  }
-  line = params.lx;
-  for (int ii = 1; ii < params.ny - 1; ++ii) {
-    cells[ii * params.nx + line].speeds[5] = recvbuf[(params.lx * 3 + params.ly * 3) + (ii - 1) * 3    ];
-    cells[ii * params.nx + line].speeds[1] = recvbuf[(params.lx * 3 + params.ly * 3) + (ii - 1) * 3 + 1];
-    cells[ii * params.nx + line].speeds[8] = recvbuf[(params.lx * 3 + params.ly * 3) + (ii - 1) * 3 + 2];
-  }
-  line = params.ly;
-  for (int jj = 1; jj < params.nx - 1; ++jj) {
-    cells[line * params.nx + jj].speeds[6] = recvbuf[(params.lx * 3 + params.ly * 6) + (jj - 1) * 3    ];
-    cells[line * params.nx + jj].speeds[2] = recvbuf[(params.lx * 3 + params.ly * 6) + (jj - 1) * 3 + 1];
-    cells[line * params.nx + jj].speeds[5] = recvbuf[(params.lx * 3 + params.ly * 6) + (jj - 1) * 3 + 2];
-  }
-  cells[1 * params.nx + 1].speeds[7]                 = corners[0];
-  cells[1 * params.nx + params.lx].speeds[8]         = corners[1];
-  cells[params.ly * params.nx + params.lx].speeds[5] = corners[2];
-  cells[params.ly * params.nx + 1].speeds[6]         = corners[3];
-
-  return EXIT_SUCCESS;
-}
-
-int gather_av_velocities(float* restrict av_vels, int tt, float local_tot_u, int tot_cells) {
-  float tot_u;
-  MPI_Reduce(&local_tot_u, &tot_u, 1, MPI_FLOAT, MPI_SUM, MASTER, MPI_COMM_WORLD);
-  av_vels[tt] = tot_u / tot_cells;
-
-  return EXIT_SUCCESS;
-}
-
-// ===========================
-// === SEPERATED FUNCTIONS ===
-// ===========================
-
-void accelerate_flow_1(const t_param params, t_speed* cells, int* obstacles, const int accelerating_row)
-{
-  // compute weighting factors
-  const float w1a = params.density * params.accel / 9.0f;
-  const float w2a = params.density * params.accel / 36.0f;
-  // rows used for accelerating flow
-  const int row2 = accelerating_row;
-
-  //#pragma omp for schedule(static)
-  for (int jj = 1; jj < params.lx + 1; ++jj)
-  {
-    // if the cell is not occupied and
-    // we don't send a negative density
-    if (!obstacles[row2 * params.lx + (jj - 1)]
-        && (cells[(row2 + 1) * params.nx + jj].speeds[3] - w1a) > 0.0f
-        && (cells[(row2 + 1) * params.nx + jj].speeds[6] - w2a) > 0.0f
-        && (cells[(row2 + 1) * params.nx + jj].speeds[7] - w2a) > 0.0f)
-    {
-      // increase 'east-side' densities 
-      cells[(row2 + 1) * params.nx + jj].speeds[1] += w1a;
-      cells[(row2 + 1) * params.nx + jj].speeds[5] += w2a;
-      cells[(row2 + 1) * params.nx + jj].speeds[8] += w2a;
-      // decrease 'west-side' densities 
-      cells[(row2 + 1) * params.nx + jj].speeds[3] -= w1a;
-      cells[(row2 + 1) * params.nx + jj].speeds[6] -= w2a;
-      cells[(row2 + 1) * params.nx + jj].speeds[7] -= w2a;
-    }
-  }
-}
-
-void accelerate_flow_2(const t_param params, t_speed* cells, int* obstacles, const int accelerating_row)
-{
-  // compute weighting factors
-  const float w1a = params.density * params.accel / 9.0f;
-  const float w2a = params.density * params.accel / 36.0f;
-  // rows used for accelerating flow
-  const int row1 = accelerating_row + 1;
-  const int row2 = accelerating_row;
-  const int row3 = accelerating_row - 1;
-
-  //#pragma omp for schedule(static)
-  for (int jj = 1; jj < params.lx + 1; ++jj)
-  {
-    int x_e = jj + 1;
-    int x_w = jj - 1;
-
-    // if the cell is not occupied and
-    // we don't send a negative density
-    if (!obstacles[row2 * params.lx + (jj - 1)]
-        && (cells[(row2 + 1) * params.nx + x_w].speeds[1] - w1a) > 0.0f
-        && (cells[(row1 + 1) * params.nx + x_w].speeds[8] - w2a) > 0.0f
-        && (cells[(row3 + 1) * params.nx + x_w].speeds[5] - w2a) > 0.0f)
-    {
-      // increase 'east-side' densities 
-      cells[(row2 + 1) * params.nx + x_e].speeds[3] += w1a;
-      cells[(row1 + 1) * params.nx + x_e].speeds[7] += w2a;
-      cells[(row3 + 1) * params.nx + x_e].speeds[6] += w2a;
-      // decrease 'west-side' densities 
-      cells[(row2 + 1) * params.nx + x_w].speeds[1] -= w1a;
-      cells[(row1 + 1) * params.nx + x_w].speeds[8] -= w2a;
-      cells[(row3 + 1) * params.nx + x_w].speeds[5] -= w2a;
-    }
-  }
-}
-
-
-void timestep_1(const t_param params, const float tot_cells, t_speed* restrict cells, int *restrict obstacles, float* av_vels, int tt)
-{
   // collision constants
   const float w[NSPEEDS] = { 4.0f / 9.0f, 
                              1.0f / 9.0f, 1.0f / 9.0f, 1.0f / 9.0f, 1.0f / 9.0f, 
@@ -1013,8 +912,91 @@ void timestep_1(const t_param params, const float tot_cells, t_speed* restrict c
   gather_av_velocities(av_vels, tt, tot_u, tot_cells);
 }
 
-void timestep_2(const t_param params, const float tot_cells, t_speed* restrict cells, int *restrict obstacles, float* av_vels, int tt)
+void timestep_2(const t_param params, const float tot_cells, t_speed* restrict cells, int *restrict obstacles, float* av_vels, int tt,
+                int *neighbours, float *sendbuf, float *recvbuf)
 {
+  MPI_Request request[16];
+  int line;
+
+  line = params.lx + 1;
+  for (int ii = 1; ii < params.ny - 1; ++ii) {
+    sendbuf[(ii - 1) * 3    ] = cells[ii * params.nx + line].speeds[6];
+    sendbuf[(ii - 1) * 3 + 1] = cells[ii * params.nx + line].speeds[3];
+    sendbuf[(ii - 1) * 3 + 2] = cells[ii * params.nx + line].speeds[7];
+  }
+  line = params.ly + 1;
+  for (int jj = 1; jj < params.nx - 1; ++jj) {
+    sendbuf[(params.ly * 3) + (jj - 1) * 3    ] = cells[line * params.nx + jj].speeds[7];
+    sendbuf[(params.ly * 3) + (jj - 1) * 3 + 1] = cells[line * params.nx + jj].speeds[4];
+    sendbuf[(params.ly * 3) + (jj - 1) * 3 + 2] = cells[line * params.nx + jj].speeds[8];
+  }
+  line = 0;
+  for (int ii = 1; ii < params.ny - 1; ++ii) {
+    sendbuf[(params.lx * 3 + params.ly * 3) + (ii - 1) * 3    ] = cells[ii * params.nx + line].speeds[5];
+    sendbuf[(params.lx * 3 + params.ly * 3) + (ii - 1) * 3 + 1] = cells[ii * params.nx + line].speeds[1];
+    sendbuf[(params.lx * 3 + params.ly * 3) + (ii - 1) * 3 + 2] = cells[ii * params.nx + line].speeds[8];
+  }
+  line = 0;
+  for (int jj = 1; jj < params.nx - 1; ++jj) {
+    sendbuf[(params.lx * 3 + params.ly * 6) + (jj - 1) * 3    ] = cells[line * params.nx + jj].speeds[6];
+    sendbuf[(params.lx * 3 + params.ly * 6) + (jj - 1) * 3 + 1] = cells[line * params.nx + jj].speeds[2];
+    sendbuf[(params.lx * 3 + params.ly * 6) + (jj - 1) * 3 + 2] = cells[line * params.nx + jj].speeds[5];
+  }
+
+  // corners
+  MPI_Isend(&sendbuf[0], params.ly * 3, MPI_FLOAT, neighbours[0], 0, MPI_COMM_WORLD, &request[0]);
+  MPI_Isend(&sendbuf[(params.ly * 3)], params.lx * 3, MPI_FLOAT, neighbours[1], 0, MPI_COMM_WORLD, &request[1]);
+  MPI_Isend(&sendbuf[(params.lx * 3 + params.ly * 3)], params.ly * 3, MPI_FLOAT, neighbours[2], 0, MPI_COMM_WORLD, &request[2]);
+  MPI_Isend(&sendbuf[(params.lx * 3 + params.ly * 6)], params.lx * 3, MPI_FLOAT, neighbours[3], 0, MPI_COMM_WORLD, &request[3]);
+  // edges
+  MPI_Isend(&cells[(params.ly + 1) * params.nx + (params.lx + 1)].speeds[7], 1, MPI_FLOAT, neighbours[4], 0, MPI_COMM_WORLD, &request[4]);
+  MPI_Isend(&cells[(params.ly + 1) * params.nx + 0].speeds[8], 1, MPI_FLOAT, neighbours[5], 0, MPI_COMM_WORLD, &request[5]);
+  MPI_Isend(&cells[0 * params.nx + 0].speeds[5], 1, MPI_FLOAT, neighbours[6], 0, MPI_COMM_WORLD, &request[6]);
+  MPI_Isend(&cells[0 * params.nx + (params.lx + 1)].speeds[6], 1, MPI_FLOAT, neighbours[7], 0, MPI_COMM_WORLD, &request[7]);
+  
+  // edges
+  MPI_Irecv(&recvbuf[0], params.ly * 3, MPI_FLOAT, neighbours[2], 0, MPI_COMM_WORLD, &request[8]);
+  MPI_Irecv(&recvbuf[(params.ly * 3)], params.lx * 3, MPI_FLOAT, neighbours[3], 0, MPI_COMM_WORLD, &request[9]);
+  MPI_Irecv(&recvbuf[(params.lx * 3 + params.ly * 3)], params.ly * 3, MPI_FLOAT, neighbours[0], 0, MPI_COMM_WORLD, &request[10]);
+  MPI_Irecv(&recvbuf[(params.lx * 3 + params.ly * 6)], params.lx * 3, MPI_FLOAT, neighbours[1], 0, MPI_COMM_WORLD, &request[11]);
+  // corners  
+  float corners[4];
+  MPI_Irecv(&corners[0], 1, MPI_FLOAT, neighbours[6], 0, MPI_COMM_WORLD, &request[12]);
+  MPI_Irecv(&corners[1], 1, MPI_FLOAT, neighbours[7], 0, MPI_COMM_WORLD, &request[13]);
+  MPI_Irecv(&corners[2], 1, MPI_FLOAT, neighbours[4], 0, MPI_COMM_WORLD, &request[14]);
+  MPI_Irecv(&corners[3], 1, MPI_FLOAT, neighbours[5], 0, MPI_COMM_WORLD, &request[15]);
+
+  MPI_Waitall(16, request, MPI_STATUS_IGNORE);
+
+  line = 1;
+  for (int ii = 1; ii < params.ny - 1; ++ii) {
+    cells[ii * params.nx + line].speeds[6] = recvbuf[(ii - 1) * 3    ];
+    cells[ii * params.nx + line].speeds[3] = recvbuf[(ii - 1) * 3 + 1];
+    cells[ii * params.nx + line].speeds[7] = recvbuf[(ii - 1) * 3 + 2];
+  }
+  line = 1;
+  for (int jj = 1; jj < params.nx - 1; ++jj) {
+    cells[line * params.nx + jj].speeds[7] = recvbuf[(params.ly * 3) + (jj - 1) * 3    ];
+    cells[line * params.nx + jj].speeds[4] = recvbuf[(params.ly * 3) + (jj - 1) * 3 + 1];
+    cells[line * params.nx + jj].speeds[8] = recvbuf[(params.ly * 3) + (jj - 1) * 3 + 2];
+  }
+  line = params.lx;
+  for (int ii = 1; ii < params.ny - 1; ++ii) {
+    cells[ii * params.nx + line].speeds[5] = recvbuf[(params.lx * 3 + params.ly * 3) + (ii - 1) * 3    ];
+    cells[ii * params.nx + line].speeds[1] = recvbuf[(params.lx * 3 + params.ly * 3) + (ii - 1) * 3 + 1];
+    cells[ii * params.nx + line].speeds[8] = recvbuf[(params.lx * 3 + params.ly * 3) + (ii - 1) * 3 + 2];
+  }
+  line = params.ly;
+  for (int jj = 1; jj < params.nx - 1; ++jj) {
+    cells[line * params.nx + jj].speeds[6] = recvbuf[(params.lx * 3 + params.ly * 6) + (jj - 1) * 3    ];
+    cells[line * params.nx + jj].speeds[2] = recvbuf[(params.lx * 3 + params.ly * 6) + (jj - 1) * 3 + 1];
+    cells[line * params.nx + jj].speeds[5] = recvbuf[(params.lx * 3 + params.ly * 6) + (jj - 1) * 3 + 2];
+  }
+  cells[1 * params.nx + 1].speeds[7]                 = corners[0];
+  cells[1 * params.nx + params.lx].speeds[8]         = corners[1];
+  cells[params.ly * params.nx + params.lx].speeds[5] = corners[2];
+  cells[params.ly * params.nx + 1].speeds[6]         = corners[3];
+
   // collision constants
   const float w[NSPEEDS] = { 4.0f / 9.0f, 
                              1.0f / 9.0f, 1.0f / 9.0f, 1.0f / 9.0f, 1.0f / 9.0f, 
