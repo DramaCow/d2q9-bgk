@@ -1154,6 +1154,96 @@ void timestep_2(const t_param params, const float tot_cells, t_speed* restrict c
   MPI_Irecv(&corners[2], 1, MPI_FLOAT, neighbours[4], 0, MPI_COMM_WORLD, &request[14]);
   MPI_Irecv(&corners[3], 1, MPI_FLOAT, neighbours[5], 0, MPI_COMM_WORLD, &request[15]);
 
+  // collision constants
+  const float w[NSPEEDS] = { 4.0f / 9.0f, 
+                             1.0f / 9.0f, 1.0f / 9.0f, 1.0f / 9.0f, 1.0f / 9.0f, 
+                             1.0f / 36.0f, 1.0f / 36.0f, 1.0f / 36.0f, 1.0f / 36.0f };
+  const int u[NSPEEDS][2] = { {  0,  0 }, {  1,  0 }, {  0,  1 },
+                              { -1,  0 }, {  0, -1 }, {  1,  1 },
+                              { -1,  1 }, { -1, -1 }, {  1, -1 } };
+
+  // average velocity locals  
+  float tot_u = 0.0f; // accumulated magnitudes of velocity for each cell
+
+  // loop over the cells in the grid
+  //#pragma omp for schedule(static)
+  //for (int ii = 0; ii < params.ny; ++ii)
+  for (int ii = 2; ii < params.ly; ++ii)
+  {
+    for (int jj = 2; jj < params.lx; ++jj)
+    {
+      if (!obstacles[(ii - 1) * params.lx + (jj - 1)])
+      { 
+        // ===================
+        // === "PROPAGATE" === aka. streaming
+        // ===================
+        // this iteration only uses local speeds (no need to look at neighbours)
+        // [[note: there speeds are "facing" inwards]]
+        float tmp_speeds[NSPEEDS];
+        tmp_speeds[0] = cells[ii * params.nx + jj].speeds[0];
+        tmp_speeds[1] = cells[ii * params.nx + jj].speeds[3];
+        tmp_speeds[2] = cells[ii * params.nx + jj].speeds[4];
+        tmp_speeds[3] = cells[ii * params.nx + jj].speeds[1];
+        tmp_speeds[4] = cells[ii * params.nx + jj].speeds[2];
+        tmp_speeds[5] = cells[ii * params.nx + jj].speeds[7];
+        tmp_speeds[6] = cells[ii * params.nx + jj].speeds[8];
+        tmp_speeds[7] = cells[ii * params.nx + jj].speeds[5];
+        tmp_speeds[8] = cells[ii * params.nx + jj].speeds[6];
+
+        // =================
+        // === COLLISION === don't consider occupied cells
+        // =================
+        // compute local density total
+        float local_density = 0.0f;
+        for (int kk = 0; kk < NSPEEDS; ++kk)
+        {
+          local_density += tmp_speeds[kk];
+        }
+
+        // compute x velocity component
+        float u_x = ( 
+                      + tmp_speeds[1]
+                      + tmp_speeds[5]
+                      + tmp_speeds[8]
+                      - tmp_speeds[3]
+                      - tmp_speeds[6]
+                      - tmp_speeds[7] 
+                    ) / local_density;
+                       
+        // compute y velocity component
+        float u_y = ( 
+                      + tmp_speeds[2]
+                      + tmp_speeds[5]
+                      + tmp_speeds[6]
+                      - tmp_speeds[4]
+                      - tmp_speeds[7]
+                      - tmp_speeds[8] 
+                    ) / local_density;
+
+        // velocity squared
+        float u_sq = u_x * u_x + u_y * u_y;
+
+        // equilibrium densities
+        float d_equ[NSPEEDS];
+        for (int kk = 0; kk < NSPEEDS; ++kk) {
+          // directional velocity components
+          float u_kk = u[kk][0]*u_x + u[kk][1]*u_y;
+          d_equ[kk] = w[kk] * params.omega * local_density * (1.0f + 3.0f*u_kk + 4.5f*u_kk*u_kk - 1.5f*u_sq);
+        }
+
+        // relaxation step
+        // store cells speeds in current cell only
+        for (int kk = 0; kk < NSPEEDS; ++kk)
+        {
+          cells[ii * params.nx + jj].speeds[kk] = (1.0f - params.omega)*tmp_speeds[kk] + d_equ[kk];
+        }
+
+        // accumulate the norm of x- and y- velocity components
+        tot_u += sqrtf(u_x * u_x + u_y * u_y);
+      }
+    }
+  }
+
   MPI_Waitall(16, request, MPI_STATUS_IGNORE);
 
   line = 1;
@@ -1185,23 +1275,87 @@ void timestep_2(const t_param params, const float tot_cells, t_speed* restrict c
   cells[params.ly * params.nx + params.lx].speeds[5] = corners[2];
   cells[params.ly * params.nx + 1].speeds[6]         = corners[3];
 
-  // collision constants
-  const float w[NSPEEDS] = { 4.0f / 9.0f, 
-                             1.0f / 9.0f, 1.0f / 9.0f, 1.0f / 9.0f, 1.0f / 9.0f, 
-                             1.0f / 36.0f, 1.0f / 36.0f, 1.0f / 36.0f, 1.0f / 36.0f };
-  const int u[NSPEEDS][2] = { {  0,  0 }, {  1,  0 }, {  0,  1 },
-                              { -1,  0 }, {  0, -1 }, {  1,  1 },
-                              { -1,  1 }, { -1, -1 }, {  1, -1 } };
-
-  // average velocity locals  
-  float tot_u = 0.0f; // accumulated magnitudes of velocity for each cell
-
-  // loop over the cells in the grid
-  //#pragma omp for schedule(static)
-  //for (int ii = 0; ii < params.ny; ++ii)
-  for (int ii = 1; ii < params.ly + 1; ++ii)
+  // rows
+  for (int ii = 1; ii < params.ly + 1; ii += params.ly - 1)
   {
     for (int jj = 1; jj < params.lx + 1; ++jj)
+    {
+      if (!obstacles[(ii - 1) * params.lx + (jj - 1)])
+      { 
+        // ===================
+        // === "PROPAGATE" === aka. streaming
+        // ===================
+        // this iteration only uses local speeds (no need to look at neighbours)
+        // [[note: there speeds are "facing" inwards]]
+        float tmp_speeds[NSPEEDS];
+        tmp_speeds[0] = cells[ii * params.nx + jj].speeds[0];
+        tmp_speeds[1] = cells[ii * params.nx + jj].speeds[3];
+        tmp_speeds[2] = cells[ii * params.nx + jj].speeds[4];
+        tmp_speeds[3] = cells[ii * params.nx + jj].speeds[1];
+        tmp_speeds[4] = cells[ii * params.nx + jj].speeds[2];
+        tmp_speeds[5] = cells[ii * params.nx + jj].speeds[7];
+        tmp_speeds[6] = cells[ii * params.nx + jj].speeds[8];
+        tmp_speeds[7] = cells[ii * params.nx + jj].speeds[5];
+        tmp_speeds[8] = cells[ii * params.nx + jj].speeds[6];
+
+        // =================
+        // === COLLISION === don't consider occupied cells
+        // =================
+        // compute local density total
+        float local_density = 0.0f;
+        for (int kk = 0; kk < NSPEEDS; ++kk)
+        {
+          local_density += tmp_speeds[kk];
+        }
+
+        // compute x velocity component
+        float u_x = ( 
+                      + tmp_speeds[1]
+                      + tmp_speeds[5]
+                      + tmp_speeds[8]
+                      - tmp_speeds[3]
+                      - tmp_speeds[6]
+                      - tmp_speeds[7] 
+                    ) / local_density;
+                       
+        // compute y velocity component
+        float u_y = ( 
+                      + tmp_speeds[2]
+                      + tmp_speeds[5]
+                      + tmp_speeds[6]
+                      - tmp_speeds[4]
+                      - tmp_speeds[7]
+                      - tmp_speeds[8] 
+                    ) / local_density;
+
+        // velocity squared
+        float u_sq = u_x * u_x + u_y * u_y;
+
+        // equilibrium densities
+        float d_equ[NSPEEDS];
+        for (int kk = 0; kk < NSPEEDS; ++kk) {
+          // directional velocity components
+          float u_kk = u[kk][0]*u_x + u[kk][1]*u_y;
+          d_equ[kk] = w[kk] * params.omega * local_density * (1.0f + 3.0f*u_kk + 4.5f*u_kk*u_kk - 1.5f*u_sq);
+        }
+
+        // relaxation step
+        // store cells speeds in current cell only
+        for (int kk = 0; kk < NSPEEDS; ++kk)
+        {
+          cells[ii * params.nx + jj].speeds[kk] = (1.0f - params.omega)*tmp_speeds[kk] + d_equ[kk];
+        }
+
+        // accumulate the norm of x- and y- velocity components
+        tot_u += sqrtf(u_x * u_x + u_y * u_y);
+      }
+    }
+  }
+
+  // columns
+  for (int ii = 2; ii < params.ly; ++ii)
+  {
+    for (int jj = 1; jj < params.lx + 1; jj += params.lx - 1)
     {
       if (!obstacles[(ii - 1) * params.lx + (jj - 1)])
       { 
