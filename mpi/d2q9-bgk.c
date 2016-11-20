@@ -206,8 +206,15 @@ int main(int argc, char* argv[])
   // initialise our data structures and load values from file 
   initialise(paramfile, obstaclefile, &params, &cells, &obstacles, &av_vels, coords, dims);
 
-  int sx = coords[0] * (params.gx / dims[0]);
-  int sy = coords[1] * (params.gy / dims[1]);
+  int rx = params.gx % dims[0];
+  int ry = params.gy % dims[1];
+
+  int sx = coords[0] * (params.gx / dims[0])   // starting x position
+           + (coords[0] < rx ? coords[0] : rx); 
+  int sy = coords[1] * (params.gy / dims[1])   // starting y position
+           + (coords[1] < ry ? coords[1] : ry); 
+
+  printf("rank: %d, sx = %d, sy %d\n", rank, sx, sy);
 
   { // pre-count number of non-obstacles
     float local_tot_cells = 0.0f;
