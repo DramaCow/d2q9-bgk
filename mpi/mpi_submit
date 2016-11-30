@@ -14,7 +14,7 @@
 application="./d2q9-bgk"
 
 #! Run options for the application
-options="input_1024x1024.params obstacles_1024x1024.dat"
+options="input_256x256.params obstacles_256x256.dat"
 
 ###############################################################
 ### You should not have to change anything below this line ####
@@ -23,6 +23,9 @@ options="input_1024x1024.params obstacles_1024x1024.dat"
 #! change the working directory (default is home directory)
 
 cd $PBS_O_WORKDIR
+
+#source env.sh
+module load languages/intel-compiler-16-u2
 
 echo Running on host `hostname`
 echo Time is `date`
