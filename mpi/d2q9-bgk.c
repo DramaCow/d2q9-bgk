@@ -198,8 +198,8 @@ int main(int argc, char* argv[])
     dir[1] = (coords[1] == 0) ? (dims[1] - 1) : (coords[1] - 1); 
     MPI_Cart_rank(comm_cart, dir, &neighbours[7]);
   }
-  printf("rank[%d, %d : %d] --> (%d, %d, %d, %d, %d, %d, %d, %d)\n", coords[0], coords[1], rank, 
-  neighbours[0], neighbours[1], neighbours[2], neighbours[3], neighbours[4], neighbours[5], neighbours[6], neighbours[7]);
+  //printf("rank[%d, %d : %d] --> (%d, %d, %d, %d, %d, %d, %d, %d)\n", coords[0], coords[1], rank, 
+  //neighbours[0], neighbours[1], neighbours[2], neighbours[3], neighbours[4], neighbours[5], neighbours[6], neighbours[7]);
 
   // initialise our data structures and load values from file 
   initialise(paramfile, obstaclefile, &params, &cells, &obstacles, &av_vels, coords, dims);
@@ -212,7 +212,7 @@ int main(int argc, char* argv[])
   int sy = coords[1] * (params.gy / dims[1])   // starting y position
            + (coords[1] < ry ? coords[1] : ry); 
 
-  printf("rank: %d, sx = %d, sy %d\n", rank, sx, sy);
+  //printf("rank: %d, sx = %d, sy %d\n", rank, sx, sy);
 
   { // pre-count number of non-obstacles
     float local_tot_cells = 0.0f;
@@ -242,7 +242,6 @@ int main(int argc, char* argv[])
   //       inputs will have an even number of max iterations.  
   if (sy <= params.gy - 2 && params.gy - 2 < sy + params.ly) {
     int accelerating_row = (params.gy - 2) - sy;
-    printf("(%d, %d) of %d -- [%d, %d]\n", coords[0], coords[1], rank, sy, params.ly);
     for (int tt = 0; tt < params.maxIters; tt+=2) {
       accelerate_flow_1(params, cells, obstacles, accelerating_row);
       timestep_1(params, tot_cells, cells, obstacles, av_vels, tt, neighbours, sendbuf, recvbuf);
@@ -316,7 +315,7 @@ int main(int argc, char* argv[])
       int nx = lx + 2;
       int ny = ly + 2;
 
-      printf("%d : (%d, %d, %d, %d)\n", source, sx, sy, lx, ly);
+      //printf("%d : (%d, %d, %d, %d)\n", source, sx, sy, lx, ly);
  
       for (int ii = 0; ii < ly; ++ii) {
 				MPI_Recv(&cells[(sy + ii) * params.gx + sx], lx, mpi_speed_type, source, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
