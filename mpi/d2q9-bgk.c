@@ -498,7 +498,7 @@ int initialise(const char* paramfile, const char* obstaclefile,
 
   // allocate space to hold a record of the avarage velocities computed
   // at each timestep
-  *av_vels_ptr = (float*)malloc(sizeof(float) * params->maxIters);
+  *av_vels_ptr = (rank == MASTER) ? (float*)malloc(sizeof(float) * params->maxIters) : NULL;
 
   return EXIT_SUCCESS;
 }
@@ -650,7 +650,9 @@ void usage(const char* exe)
 int gather_av_velocities(float* restrict av_vels, int tt, float local_tot_u, int tot_cells) {
   float tot_u;
   MPI_Reduce(&local_tot_u, &tot_u, 1, MPI_FLOAT, MPI_SUM, MASTER, MPI_COMM_WORLD);
-  av_vels[tt] = tot_u / tot_cells;
+
+  int rank; MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+  if (rank == MASTER) av_vels[tt] = tot_u / tot_cells;
 
   return EXIT_SUCCESS;
 }
