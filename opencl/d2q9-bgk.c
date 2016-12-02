@@ -129,6 +129,11 @@ int rebound(const t_param params, t_speed* cells, t_speed* tmp_cells, int* obsta
 int collision(const t_param params, t_speed* cells, t_speed* tmp_cells, int* obstacles, t_ocl ocl);
 int write_values(const t_param params, t_speed* cells, int* obstacles, double* av_vels);
 
+int accelerate_flow_1(const t_param params, t_speed* cells, int* obstacles, t_ocl ocl);
+int accelerate_flow_2(const t_param params, t_speed* cells, int* obstacles, t_ocl ocl);
+int propagate_collide_1(const t_param params, t_speed* cells, int* obstacles, t_ocl ocl);
+int propagate_collide_2(const t_param params, t_speed* cells, int* obstacles, t_ocl ocl);
+
 /* finalise, including freeing up allocated memory */
 int finalise(const t_param* params, t_speed** cells_ptr, t_speed** tmp_cells_ptr,
              int** obstacles_ptr, double** av_vels_ptr, t_ocl ocl);
@@ -451,6 +456,126 @@ int collision(const t_param params, t_speed* cells, t_speed* tmp_cells, int* obs
       }
     }
   }
+
+  return EXIT_SUCCESS;
+}
+
+int accelerate_flow_1(const t_param params, t_speed* cells, int* obstacles, t_ocl ocl)
+{
+  cl_int err;
+
+  // Set kernel arguments
+  err = clSetKernelArg(ocl.accelerate_flow_1, 0, sizeof(cl_mem), &ocl.cells);
+  checkError(err, "setting accelerate_flow_1 arg 0", __LINE__);
+  err = clSetKernelArg(ocl.accelerate_flow_1, 1, sizeof(cl_mem), &ocl.obstacles);
+  checkError(err, "setting accelerate_flow_1 arg 1", __LINE__);
+  err = clSetKernelArg(ocl.accelerate_flow_1, 2, sizeof(cl_int), &params.nx);
+  checkError(err, "setting accelerate_flow_1 arg 2", __LINE__);
+  err = clSetKernelArg(ocl.accelerate_flow_1, 3, sizeof(cl_int), &params.ny);
+  checkError(err, "setting accelerate_flow_1 arg 3", __LINE__);
+  err = clSetKernelArg(ocl.accelerate_flow_1, 4, sizeof(cl_double), &params.density);
+  checkError(err, "setting accelerate_flow_1 arg 4", __LINE__);
+  err = clSetKernelArg(ocl.accelerate_flow_1, 5, sizeof(cl_double), &params.accel);
+  checkError(err, "setting accelerate_flow_1 arg 5", __LINE__);
+
+  // Enqueue kernel
+  size_t global[1] = {params.nx};
+  err = clEnqueueNDRangeKernel(ocl.queue, ocl.accelerate_flow_1,
+                               1, NULL, global, NULL, 0, NULL, NULL);
+  checkError(err, "enqueueing accelerate_flow_1 kernel", __LINE__);
+
+  // Wait for kernel to finish
+  err = clFinish(ocl.queue);
+  checkError(err, "waiting for accelerate_flow_1 kernel", __LINE__);
+
+  return EXIT_SUCCESS;
+}
+
+int accelerate_flow_2(const t_param params, t_speed* cells, int* obstacles, t_ocl ocl)
+{
+  cl_int err;
+
+  // Set kernel arguments
+  err = clSetKernelArg(ocl.accelerate_flow_2, 0, sizeof(cl_mem), &ocl.cells);
+  checkError(err, "setting accelerate_flow_2 arg 0", __LINE__);
+  err = clSetKernelArg(ocl.accelerate_flow_2, 1, sizeof(cl_mem), &ocl.obstacles);
+  checkError(err, "setting accelerate_flow_2 arg 1", __LINE__);
+  err = clSetKernelArg(ocl.accelerate_flow_2, 2, sizeof(cl_int), &params.nx);
+  checkError(err, "setting accelerate_flow_2 arg 2", __LINE__);
+  err = clSetKernelArg(ocl.accelerate_flow_2, 3, sizeof(cl_int), &params.ny);
+  checkError(err, "setting accelerate_flow_2 arg 3", __LINE__);
+  err = clSetKernelArg(ocl.accelerate_flow_2, 4, sizeof(cl_double), &params.density);
+  checkError(err, "setting accelerate_flow_2 arg 4", __LINE__);
+  err = clSetKernelArg(ocl.accelerate_flow_2, 5, sizeof(cl_double), &params.accel);
+  checkError(err, "setting accelerate_flow_2 arg 5", __LINE__);
+
+  // Enqueue kernel
+  size_t global[1] = {params.nx};
+  err = clEnqueueNDRangeKernel(ocl.queue, ocl.accelerate_flow_2,
+                               1, NULL, global, NULL, 0, NULL, NULL);
+  checkError(err, "enqueueing accelerate_flow_2 kernel", __LINE__);
+
+  // Wait for kernel to finish
+  err = clFinish(ocl.queue);
+  checkError(err, "waiting for accelerate_flow_2 kernel", __LINE__);
+
+  return EXIT_SUCCESS;
+}
+
+int propagate_collide_1(const t_param params, t_speed* cells, int* obstacles, t_ocl ocl)
+{
+  cl_int err;
+
+  // Set kernel arguments
+  err = clSetKernelArg(ocl.propagate_collide_1, 0, sizeof(cl_mem), &ocl.cells);
+  checkError(err, "setting propagate_collide_1 arg 0", __LINE__);
+  err = clSetKernelArg(ocl.propagate_collide_1, 1, sizeof(cl_mem), &ocl.tmp_cells);
+  checkError(err, "setting propagate_collide_1 arg 1", __LINE__);
+  err = clSetKernelArg(ocl.propagate_collide_1, 2, sizeof(cl_mem), &ocl.obstacles);
+  checkError(err, "setting propagate_collide_1 arg 2", __LINE__);
+  err = clSetKernelArg(ocl.propagate_collide_1, 3, sizeof(cl_int), &params.nx);
+  checkError(err, "setting propagate_collide_1 arg 3", __LINE__);
+  err = clSetKernelArg(ocl.propagate_collide_1, 4, sizeof(cl_int), &params.ny);
+  checkError(err, "setting propagate_collide_1 arg 4", __LINE__);
+
+  // Enqueue kernel
+  size_t global[2] = {params.nx, params.ny};
+  err = clEnqueueNDRangeKernel(ocl.queue, ocl.propagate_collide_1,
+                               2, NULL, global, NULL, 0, NULL, NULL);
+  checkError(err, "enqueueing propagate_collide_1 kernel", __LINE__);
+
+  // Wait for kernel to finish
+  err = clFinish(ocl.queue);
+  checkError(err, "waiting for propagate_collide_1 kernel", __LINE__);
+
+  return EXIT_SUCCESS;
+}
+
+int propagate_collide_2(const t_param params, t_speed* cells, int* obstacles, t_ocl ocl)
+{
+  cl_int err;
+
+  // Set kernel arguments
+  err = clSetKernelArg(ocl.propagate_collide_2, 0, sizeof(cl_mem), &ocl.cells);
+  checkError(err, "setting propagate_collide_2 arg 0", __LINE__);
+  err = clSetKernelArg(ocl.propagate_collide_2, 1, sizeof(cl_mem), &ocl.tmp_cells);
+  checkError(err, "setting propagate_collide_2 arg 1", __LINE__);
+  err = clSetKernelArg(ocl.propagate_collide_2, 2, sizeof(cl_mem), &ocl.obstacles);
+  checkError(err, "setting propagate_collide_2 arg 2", __LINE__);
+  err = clSetKernelArg(ocl.propagate_collide_2, 3, sizeof(cl_int), &params.nx);
+  checkError(err, "setting propagate_collide_2 arg 3", __LINE__);
+  err = clSetKernelArg(ocl.propagate_collide_2, 4, sizeof(cl_int), &params.ny);
+  checkError(err, "setting propagate_collide_2 arg 4", __LINE__);
+
+  // Enqueue kernel
+  size_t global[2] = {params.nx, params.ny};
+  err = clEnqueueNDRangeKernel(ocl.queue, ocl.propagate_collide_2,
+                               2, NULL, global, NULL, 0, NULL, NULL);
+  checkError(err, "enqueueing propagate_collide_2 kernel", __LINE__);
+
+  // Wait for kernel to finish
+  err = clFinish(ocl.queue);
+  checkError(err, "waiting for propagate_collide_2 kernel", __LINE__);
 
   return EXIT_SUCCESS;
 }
