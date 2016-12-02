@@ -126,7 +126,7 @@ kernel void accelerate_flow_1(global t_speed* cells,
   }
 }
 
-kernel void accelerate_flow_1(global t_speed* cells,
+kernel void accelerate_flow_2(global t_speed* cells,
                               global int* obstacles,
                               int nx, int ny,
                               float density, float accel)
@@ -167,9 +167,9 @@ kernel void accelerate_flow_1(global t_speed* cells,
 // === PROPAGATE-COLLIDE ===
 // =========================
 
-kernel void propagate_collde_1(global t_speed* cells,
-                               global int* obstacles,
-                               int nx, int ny, float omega)
+kernel void propagate_collide_1(global t_speed* cells,
+                                global int* obstacles,
+                                int nx, int ny, float omega)
 {
   int ii = get_global_id(1);
   int jj = get_global_id(0);
@@ -186,9 +186,7 @@ kernel void propagate_collde_1(global t_speed* cells,
 
   if (!obstacles[ii * nx + jj])
   { 
-    // =================
     // === PROPAGATE === aka. streaming
-    // =================
     // determine indices of axis-direction neighbours
     // respecting periodic boundary conditions (wrap around)
     int y_n = (ii == ny - 1) ? (0) : (ii + 1);
@@ -210,9 +208,7 @@ kernel void propagate_collde_1(global t_speed* cells,
     tmp_speeds[7] = cells[y_n * nx + x_e].speeds[7]; // north-east
     tmp_speeds[8] = cells[y_n * nx + x_w].speeds[8]; // north-west 
 
-    // =================
     // === COLLISION === don't consider occupied cells
-    // =================
     // compute local density total
     float local_density = 0.0f;
     for (int kk = 0; kk < NSPEEDS; ++kk)
@@ -272,9 +268,9 @@ kernel void propagate_collde_1(global t_speed* cells,
   }
 }
 
-kernel void propagate_collde_2(global t_speed* cells,
-                               global int* obstacles,
-                               int nx, int ny, float omega)
+kernel void propagate_collide_2(global t_speed* cells,
+                                global int* obstacles,
+                                int nx, int ny, float omega)
 {
   int ii = get_global_id(1);
   int jj = get_global_id(0);
@@ -291,9 +287,7 @@ kernel void propagate_collde_2(global t_speed* cells,
 
   if (!obstacles[ii * nx + jj])
   { 
-    // ===================
     // === "PROPAGATE" === aka. streaming
-    // ===================
     // this iteration only uses local speeds (no need to look at neighbours)
     // [[note: there speeds are "facing" inwards]]
     float tmp_speeds[NSPEEDS];
@@ -307,9 +301,7 @@ kernel void propagate_collde_2(global t_speed* cells,
     tmp_speeds[7] = cells[ii * nx + jj].speeds[5];
     tmp_speeds[8] = cells[ii * nx + jj].speeds[6];
 
-    // =================
     // === COLLISION === don't consider occupied cells
-    // =================
     // compute local density total
     float local_density = 0.0f;
     for (int kk = 0; kk < NSPEEDS; ++kk)
@@ -359,3 +351,8 @@ kernel void propagate_collde_2(global t_speed* cells,
     tot_u += sqrt(u_x * u_x + u_y * u_y);
   }
 }
+
+// =====================================
+// === REDUCTION ON AVERAGE VELOCITY ===
+// =====================================
+

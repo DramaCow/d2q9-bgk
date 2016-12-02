@@ -92,6 +92,11 @@ typedef struct
   cl_kernel  propagate;
   cl_kernel  rebound;
 
+  cl_kernel  accelerate_flow_1;
+  cl_kernel  accelerate_flow_2;
+  cl_kernel  propagate_collide_1;
+  cl_kernel  propagate_collide_2;
+
   cl_mem cells;
   cl_mem tmp_cells;
   cl_mem obstacles;
@@ -524,31 +529,24 @@ int initialise(const char* paramfile, const char* obstaclefile,
 
   /* read in the parameter values */
   retval = fscanf(fp, "%d\n", &(params->nx));
-
   if (retval != 1) die("could not read param file: nx", __LINE__, __FILE__);
 
   retval = fscanf(fp, "%d\n", &(params->ny));
-
   if (retval != 1) die("could not read param file: ny", __LINE__, __FILE__);
 
   retval = fscanf(fp, "%d\n", &(params->maxIters));
-
   if (retval != 1) die("could not read param file: maxIters", __LINE__, __FILE__);
 
   retval = fscanf(fp, "%d\n", &(params->reynolds_dim));
-
   if (retval != 1) die("could not read param file: reynolds_dim", __LINE__, __FILE__);
 
   retval = fscanf(fp, "%lf\n", &(params->density));
-
   if (retval != 1) die("could not read param file: density", __LINE__, __FILE__);
 
   retval = fscanf(fp, "%lf\n", &(params->accel));
-
   if (retval != 1) die("could not read param file: accel", __LINE__, __FILE__);
 
   retval = fscanf(fp, "%lf\n", &(params->omega));
-
   if (retval != 1) die("could not read param file: omega", __LINE__, __FILE__);
 
   /* and close up the file */
@@ -575,17 +573,14 @@ int initialise(const char* paramfile, const char* obstaclefile,
 
   /* main grid */
   *cells_ptr = (t_speed*)malloc(sizeof(t_speed) * (params->ny * params->nx));
-
   if (*cells_ptr == NULL) die("cannot allocate memory for cells", __LINE__, __FILE__);
 
   /* 'helper' grid, used as scratch space */
   *tmp_cells_ptr = (t_speed*)malloc(sizeof(t_speed) * (params->ny * params->nx));
-
   if (*tmp_cells_ptr == NULL) die("cannot allocate memory for tmp_cells", __LINE__, __FILE__);
 
   /* the map of obstacles */
   *obstacles_ptr = malloc(sizeof(int) * (params->ny * params->nx));
-
   if (*obstacles_ptr == NULL) die("cannot allocate column memory for obstacles", __LINE__, __FILE__);
 
   /* initialise densities */
@@ -635,11 +630,8 @@ int initialise(const char* paramfile, const char* obstaclefile,
   {
     /* some checks */
     if (retval != 3) die("expected 3 values per line in obstacle file", __LINE__, __FILE__);
-
     if (xx < 0 || xx > params->nx - 1) die("obstacle x-coord out of range", __LINE__, __FILE__);
-
     if (yy < 0 || yy > params->ny - 1) die("obstacle y-coord out of range", __LINE__, __FILE__);
-
     if (blocked != 1) die("obstacle blocked value should be 1", __LINE__, __FILE__);
 
     /* assign to array */
@@ -716,6 +708,15 @@ int initialise(const char* paramfile, const char* obstaclefile,
   ocl->rebound = clCreateKernel(ocl->program, "rebound", &err);
   checkError(err, "creating rebound kernel", __LINE__);
 
+  ocl->accelerate_flow_1 = clCreateKernel(ocl->program, "accelerate_flow_1", &err);
+  checkError(err, "creating accelerate_flow_1 kernel", __LINE__);
+  ocl->accelerate_flow_2 = clCreateKernel(ocl->program, "accelerate_flow_2", &err);
+  checkError(err, "creating accelerate_flow_2 kernel", __LINE__);
+  ocl->propagate_collide_1 = clCreateKernel(ocl->program, "propagate_collide_1", &err);
+  checkError(err, "creating propagate_collide_1 kernel", __LINE__);
+  ocl->propagate_collide_2 = clCreateKernel(ocl->program, "propagate_collide_2", &err);
+  checkError(err, "creating propagate_collide_2 kernel", __LINE__);
+
   // Allocate OpenCL buffers
   // TODO: define memory here
   ocl->cells = clCreateBuffer(
@@ -759,6 +760,10 @@ int finalise(const t_param* params, t_speed** cells_ptr, t_speed** tmp_cells_ptr
   clReleaseKernel(ocl.accelerate_flow);
   clReleaseKernel(ocl.propagate);
   clReleaseKernel(ocl.rebound);
+  clReleaseKernel(ocl.accelerate_flow_1);
+  clReleaseKernel(ocl.accelerate_flow_2);
+  clReleaseKernel(ocl.propagate_collide_1);
+  clReleaseKernel(ocl.propagate_collide_2);
   clReleaseProgram(ocl.program);
   clReleaseCommandQueue(ocl.queue);
   clReleaseContext(ocl.context);
