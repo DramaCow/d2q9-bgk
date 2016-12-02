@@ -68,3 +68,24 @@ kernel void propagate(global t_speed* cells,
   tmp_cells[y_s * nx + x_w].speeds[7] = cells[ii * nx + jj].speeds[7]; /* south-west */
   tmp_cells[y_s * nx + x_e].speeds[8] = cells[ii * nx + jj].speeds[8]; /* south-east */
 }
+
+kernel void rebound(global t_speed* cells, 
+                    global t_speed* tmp_cells, 
+                    global int* obstacles,
+                    int nx, int ny)
+{
+  int ii = get_global_id(1);
+  int jj = get_global_id(0);
+
+  if (obstacles[ii * nx + jj])
+  {
+    cells[ii * nx + jj].speeds[1] = tmp_cells[ii * nx + jj].speeds[3];
+    cells[ii * nx + jj].speeds[2] = tmp_cells[ii * nx + jj].speeds[4];
+    cells[ii * nx + jj].speeds[3] = tmp_cells[ii * nx + jj].speeds[1];
+    cells[ii * nx + jj].speeds[4] = tmp_cells[ii * nx + jj].speeds[2];
+    cells[ii * nx + jj].speeds[5] = tmp_cells[ii * nx + jj].speeds[7];
+    cells[ii * nx + jj].speeds[6] = tmp_cells[ii * nx + jj].speeds[8];
+    cells[ii * nx + jj].speeds[7] = tmp_cells[ii * nx + jj].speeds[5];
+    cells[ii * nx + jj].speeds[8] = tmp_cells[ii * nx + jj].speeds[6];
+  }
+}
