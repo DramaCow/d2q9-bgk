@@ -4,17 +4,17 @@
 
 typedef struct
 {
-  double speeds[NSPEEDS];
+  float speeds[NSPEEDS];
 } t_speed;
 
 kernel void accelerate_flow(global t_speed* cells,
                             global int* obstacles,
                             int nx, int ny,
-                            double density, double accel)
+                            float density, float accel)
 {
   /* compute weighting factors */
-  double w1 = density * accel / 9.0;
-  double w2 = density * accel / 36.0;
+  float w1 = density * accel / 9.0;
+  float w2 = density * accel / 36.0;
 
   /* modify the 2nd row of the grid */
   int ii = ny - 2;
@@ -264,7 +264,7 @@ kernel void propagate_collide_1(global t_speed* cells,
     cells[y_n * nx + x_w].speeds[8] = tmp_speeds[6]; // north-west
 
     // accumulate the norm of x- and y- velocity components
-    tot_u += sqrt(u_x * u_x + u_y * u_y);
+    //tot_u += sqrt(u_x * u_x + u_y * u_y);
   }
 }
 
@@ -348,7 +348,7 @@ kernel void propagate_collide_2(global t_speed* cells,
     }
 
     // accumulate the norm of x- and y- velocity components
-    tot_u += sqrt(u_x * u_x + u_y * u_y);
+    //tot_u += sqrt(u_x * u_x + u_y * u_y);
   }
 }
 
@@ -356,3 +356,23 @@ kernel void propagate_collide_2(global t_speed* cells,
 // === REDUCTION ON AVERAGE VELOCITY ===
 // =====================================
 
+void reduce(local  float* local_sums,                          
+            global float* partial_sums)                        
+{                                                          
+   int num_wrk_items  = get_local_size(0);                 
+   int local_id       = get_local_id(0);                   
+   int group_id       = get_group_id(0);                   
+   
+   float sum;                              
+   int i;                                      
+   
+   if (local_id == 0) {                      
+      sum = 0.0f;                            
+   
+      for (i=0; i<num_wrk_items; i++) {        
+          sum += local_sums[i];             
+      }                                     
+   
+      partial_sums[group_id] = sum;         
+   }
+}
