@@ -172,9 +172,9 @@ int main(int argc, char* argv[])
   cl_int err;
   struct timeval timstr;        /* structure to hold elapsed time */
   struct rusage ru;             /* structure to hold CPU time--system and user */
-  float tic, toc;              /* floating point numbers to calculate elapsed wallclock time */
-  float usrtim;                /* floating point number to record elapsed user CPU time */
-  float systim;                /* floating point number to record elapsed system CPU time */
+  double tic, toc;              /* floating point numbers to calculate elapsed wallclock time */
+  double usrtim;                /* floating point number to record elapsed user CPU time */
+  double systim;                /* floating point number to record elapsed system CPU time */
 
   /* parse the command line */
   if (argc != 3)
