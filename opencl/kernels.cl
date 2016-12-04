@@ -7,6 +7,8 @@ typedef struct
   float speeds[NSPEEDS];
 } t_speed;
 
+void reduce(local  float*, global float*);
+
 kernel void accelerate_flow(global t_speed* cells,
                             global int* obstacles,
                             int nx, int ny,
@@ -169,10 +171,17 @@ kernel void accelerate_flow_2(global t_speed* cells,
 
 kernel void propagate_collide_1(global t_speed* cells,
                                 global int* obstacles,
-                                int nx, int ny, float omega)
+                                int nx, int ny, float omega,
+                                local float* local_sums,
+                                global float* partial_sums)
 {
   int ii = get_global_id(1);
   int jj = get_global_id(0);
+
+  int li = get_local_id(1);
+  int lj = get_local_id(0);
+
+  int nlx = get_local_size(0);
 
   // collision constants
   const float w[NSPEEDS] = { 4.0f / 9.0f, 
@@ -264,16 +273,29 @@ kernel void propagate_collide_1(global t_speed* cells,
     cells[y_n * nx + x_w].speeds[8] = tmp_speeds[6]; // north-west
 
     // accumulate the norm of x- and y- velocity components
-    //tot_u += sqrt(u_x * u_x + u_y * u_y);
+    tot_u = sqrt(u_x * u_x + u_y * u_y);
   }
+
+  // reduction
+  local_sums[li * nlx + lj] = tot_u;
+  barrier(CLK_LOCAL_MEM_FENCE);
+
+  reduce(local_sums, partial_sums);
 }
 
 kernel void propagate_collide_2(global t_speed* cells,
                                 global int* obstacles,
-                                int nx, int ny, float omega)
+                                int nx, int ny, float omega,
+                                local float* local_sums,
+                                global float* partial_sums)
 {
   int ii = get_global_id(1);
   int jj = get_global_id(0);
+
+  int li = get_local_id(1);
+  int lj = get_local_id(0);
+
+  int nlx = get_local_size(0);
 
   // collision constants
   const float w[NSPEEDS] = { 4.0f / 9.0f, 
@@ -348,8 +370,14 @@ kernel void propagate_collide_2(global t_speed* cells,
     }
 
     // accumulate the norm of x- and y- velocity components
-    //tot_u += sqrt(u_x * u_x + u_y * u_y);
+    tot_u += sqrt(u_x * u_x + u_y * u_y);
   }
+
+  // reduction
+  local_sums[li * nlx + lj] = tot_u;
+  barrier(CLK_LOCAL_MEM_FENCE);
+
+  reduce(local_sums, partial_sums);
 }
 
 // =====================================
@@ -359,9 +387,10 @@ kernel void propagate_collide_2(global t_speed* cells,
 void reduce(local  float* local_sums,                          
             global float* partial_sums)                        
 {                                                          
-   int num_wrk_items  = get_local_size(0);                 
-   int local_id       = get_local_id(0);                   
-   int group_id       = get_group_id(0);                   
+   int num_wrk_items  = get_local_size(0) * get_local_size(1);                 
+   //int g;
+   int local_id       = get_local_id(0) + get_local_id(1);                   
+   int group_id       = get_group_id(1) * get_num_groups(0) + get_group_id(0);                   
    
    float sum;                              
    int i;                                      
@@ -369,7 +398,7 @@ void reduce(local  float* local_sums,
    if (local_id == 0) {                      
       sum = 0.0f;                            
    
-      for (i=0; i<num_wrk_items; i++) {        
+      for (i=0; i < num_wrk_items; i++) {        
           sum += local_sums[i];             
       }                                     
    

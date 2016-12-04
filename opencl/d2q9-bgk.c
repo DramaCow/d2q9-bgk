@@ -68,6 +68,9 @@
 #define AVVELSFILE      "av_vels.dat"
 #define OCLFILE         "kernels.cl"
 
+#define LOCAL_X 16
+#define LOCAL_Y 16
+
 /* struct to hold the parameter values */
 typedef struct
 {
@@ -100,6 +103,8 @@ typedef struct
   cl_mem cells;
   cl_mem tmp_cells;
   cl_mem obstacles;
+
+  cl_mem d_partial_sums;
 } t_ocl;
 
 /* struct to hold the 'speed' values */
@@ -190,6 +195,28 @@ int main(int argc, char* argv[])
   /* initialise our data structures and load values from file */
   initialise(paramfile, obstaclefile, &params, &cells, &tmp_cells, &obstacles, &av_vels, &ocl);
 
+  // Find kernel work-group size
+  /*
+  size_t work_group_size_1, work_group_size_2;
+  err = clGetKernelWorkGroupInfo (ocl.propagate_collide_1, ocl.device, CL_KERNEL_WORK_GROUP_SIZE, sizeof(size_t), &work_group_size_1, NULL);
+  checkError(err, "Getting propagate_collide_1 work group info", __LINE__);
+  err = clGetKernelWorkGroupInfo (ocl.propagate_collide_2, ocl.device, CL_KERNEL_WORK_GROUP_SIZE, sizeof(size_t), &work_group_size_2, NULL);
+  checkError(err, "Getting propagate_collide_2 work group info", __LINE__);
+  printf("%lu, %lu\n", work_group_size_1, work_group_size_2);
+
+  int nwork_groups = (params.nx * params.ny) / work_group_size_1;
+  printf("%d\n", nwork_groups);
+  */
+
+  // host partial sum
+  int nwork_groups = (params.nx * params.ny) / (LOCAL_X * LOCAL_Y);
+  printf("%d\n", nwork_groups);
+  float* h_psum = calloc(sizeof(float), nwork_groups);
+
+  // count number of cells
+  float tot_cells = 0.0f;
+  for (int ii = 0; ii < params.nx * params.ny; ii++) if (!obstacles[ii]) ++tot_cells;
+
   /* iterate for maxIters timesteps */
   gettimeofday(&timstr, NULL);
   tic = timstr.tv_sec + (timstr.tv_usec / 1000000.0);
@@ -206,33 +233,42 @@ int main(int argc, char* argv[])
     sizeof(cl_int) * params.nx * params.ny, obstacles, 0, NULL, NULL);
   checkError(err, "writing obstacles data", __LINE__);
 
-/*
-  for (int tt = 0; tt < params.maxIters; tt++)
-  {
-    timestep(params, cells, tmp_cells, obstacles, ocl);
-    av_vels[tt] = av_velocity(params, cells, obstacles, ocl);
-#ifdef DEBUG
-    printf("==timestep: %d==\n", tt);
-    printf("av velocity: %.12E\n", av_vels[tt]);
-    printf("tot density: %.12E\n", total_density(params, cells));
-#endif
-  }
-*/
   for (int tt = 0; tt < params.maxIters; tt+=2) {
     accelerate_flow_1(params, cells, obstacles, ocl);
     propagate_collide_1(params, cells, obstacles, ocl);
 
+    // Read d_partial_sums from device
+    err = clEnqueueReadBuffer(
+      ocl.queue, ocl.d_partial_sums, CL_TRUE, 0,
+      sizeof(float) * nwork_groups, h_psum, 0, NULL, NULL);
+    checkError(err, "reading d_partial_sums data", __LINE__);
+
+    float tot_u = 0.0f;
+    for (int ii = 0; ii < nwork_groups; ++ii) {
+      tot_u += h_psum[ii];
+    }
+    av_vels[tt] = tot_u / tot_cells;
+
     accelerate_flow_2(params, cells, obstacles, ocl);
     propagate_collide_2(params, cells, obstacles, ocl);
 
-    // Read cells from device
     err = clEnqueueReadBuffer(
-      ocl.queue, ocl.cells, CL_TRUE, 0,
-      sizeof(t_speed) * params.nx * params.ny, cells, 0, NULL, NULL);
-    checkError(err, "reading cells data", __LINE__);
+      ocl.queue, ocl.d_partial_sums, CL_TRUE, 0,
+      sizeof(float) * nwork_groups, h_psum, 0, NULL, NULL);
+    checkError(err, "reading d_partial_sums data", __LINE__);
 
-    av_vels[tt+1] = av_velocity(params, cells, obstacles, ocl);
+    tot_u = 0.0f;
+    for (int ii = 0; ii < nwork_groups; ++ii) {
+      tot_u += h_psum[ii];
+    }
+    av_vels[tt+1] = tot_u / tot_cells;
   }
+
+  // Read cells from device
+  err = clEnqueueReadBuffer(
+    ocl.queue, ocl.cells, CL_TRUE, 0,
+    sizeof(t_speed) * params.nx * params.ny, cells, 0, NULL, NULL);
+  checkError(err, "reading cells data", __LINE__);
 
   gettimeofday(&timstr, NULL);
   toc = timstr.tv_sec + (timstr.tv_usec / 1000000.0);
@@ -554,11 +590,16 @@ int propagate_collide_1(const t_param params, t_speed* cells, int* obstacles, t_
   checkError(err, "setting propagate_collide_1 arg 3", __LINE__);
   err = clSetKernelArg(ocl.propagate_collide_1, 4, sizeof(cl_float), &params.omega);
   checkError(err, "setting propagate_collide_1 arg 4", __LINE__);
+  err = clSetKernelArg(ocl.propagate_collide_1, 5, sizeof(float) * LOCAL_X * LOCAL_Y, NULL);
+  checkError(err, "setting propagate_collide_1 arg 5", __LINE__);
+  err = clSetKernelArg(ocl.propagate_collide_1, 6, sizeof(cl_mem), &ocl.d_partial_sums);
+  checkError(err, "setting propagate_collide_1 arg 6", __LINE__);
 
   // Enqueue kernel
   size_t global[2] = {params.nx, params.ny};
+  size_t local[2] = {LOCAL_X, LOCAL_Y};
   err = clEnqueueNDRangeKernel(ocl.queue, ocl.propagate_collide_1,
-                               2, NULL, global, NULL, 0, NULL, NULL);
+                               2, NULL, global, local, 0, NULL, NULL);
   checkError(err, "enqueueing propagate_collide_1 kernel", __LINE__);
 
   // Wait for kernel to finish
@@ -583,11 +624,16 @@ int propagate_collide_2(const t_param params, t_speed* cells, int* obstacles, t_
   checkError(err, "setting propagate_collide_2 arg 3", __LINE__);
   err = clSetKernelArg(ocl.propagate_collide_2, 4, sizeof(cl_float), &params.omega);
   checkError(err, "setting propagate_collide_2 arg 4", __LINE__);
+  err = clSetKernelArg(ocl.propagate_collide_2, 5, sizeof(float) * LOCAL_X * LOCAL_Y, NULL);
+  checkError(err, "setting propagate_collide_2 arg 5", __LINE__);
+  err = clSetKernelArg(ocl.propagate_collide_2, 6, sizeof(cl_mem), &ocl.d_partial_sums);
+  checkError(err, "setting propagate_collide_2 arg 6", __LINE__);
 
   // Enqueue kernel
   size_t global[2] = {params.nx, params.ny};
+  size_t local[2] = {LOCAL_X, LOCAL_Y};
   err = clEnqueueNDRangeKernel(ocl.queue, ocl.propagate_collide_2,
-                               2, NULL, global, NULL, 0, NULL, NULL);
+                               2, NULL, global, local, 0, NULL, NULL);
   checkError(err, "enqueueing propagate_collide_2 kernel", __LINE__);
 
   // Wait for kernel to finish
@@ -874,14 +920,12 @@ int initialise(const char* paramfile, const char* obstaclefile,
     sizeof(cl_int) * params->nx * params->ny, NULL, &err);
   checkError(err, "creating obstacles buffer", __LINE__);
 
-  // Find kernel work-group size
-  size_t work_group_size_1 = 8, work_group_size_2 = 8;
-  err = clGetKernelWorkGroupInfo (ocl->propagate_collide_1, ocl->device, CL_KERNEL_WORK_GROUP_SIZE, sizeof(size_t), &work_group_size_1, NULL);
-  checkError(err, "Getting propagate_collide_1 work group info", __LINE__);
-  err = clGetKernelWorkGroupInfo (ocl->propagate_collide_2, ocl->device, CL_KERNEL_WORK_GROUP_SIZE, sizeof(size_t), &work_group_size_2, NULL);
-  checkError(err, "Getting propagate_collide_2 work group info", __LINE__);
-
-  printf("%lu, %lu\n", work_group_size_1, work_group_size_2);
+  // TODO:
+  int nwork_groups = (params->nx * params->ny) / (LOCAL_X * LOCAL_Y);
+  ocl->d_partial_sums = clCreateBuffer(
+    ocl->context, CL_MEM_WRITE_ONLY, 
+    sizeof(float) * nwork_groups, NULL, &err);
+  checkError(err, "creating d_partial_sums buffer", __LINE__);
 
   return EXIT_SUCCESS;
 }
@@ -908,6 +952,8 @@ int finalise(const t_param* params, t_speed** cells_ptr, t_speed** tmp_cells_ptr
   clReleaseMemObject(ocl.cells);
   clReleaseMemObject(ocl.tmp_cells);
   clReleaseMemObject(ocl.obstacles);
+  clReleaseMemObject(ocl.d_partial_sums);
+
   clReleaseKernel(ocl.accelerate_flow);
   clReleaseKernel(ocl.propagate);
   clReleaseKernel(ocl.rebound);
@@ -915,8 +961,11 @@ int finalise(const t_param* params, t_speed** cells_ptr, t_speed** tmp_cells_ptr
   clReleaseKernel(ocl.accelerate_flow_2);
   clReleaseKernel(ocl.propagate_collide_1);
   clReleaseKernel(ocl.propagate_collide_2);
+
   clReleaseProgram(ocl.program);
+
   clReleaseCommandQueue(ocl.queue);
+
   clReleaseContext(ocl.context);
 
   return EXIT_SUCCESS;
