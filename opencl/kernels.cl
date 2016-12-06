@@ -199,6 +199,7 @@ kernel void propagate_collide_1(global t_speed* cells,
     // determine indices of axis-direction neighbours
     // respecting periodic boundary conditions (wrap around)
     int y_n = (ii == ny - 1) ? (0) : (ii + 1);
+    //int y_n = max(ny - 1, 0);
     int x_e = (jj == nx - 1) ? (0) : (jj + 1);
     int y_s = (ii == 0) ? (ny - 1) : (ii - 1);
     int x_w = (jj == 0) ? (nx - 1) : (jj - 1);
@@ -388,7 +389,6 @@ void reduce(local  float* local_sums,
             global float* partial_sums)                        
 {                                                          
    int num_wrk_items  = get_local_size(0) * get_local_size(1);                 
-   //int g;
    int local_id       = get_local_id(0) + get_local_id(1);                   
    int group_id       = get_group_id(1) * get_num_groups(0) + get_group_id(0);                   
    

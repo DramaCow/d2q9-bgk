@@ -5,7 +5,7 @@
 #PBS -o d2q9-bgk.out
 #PBS -q teaching
 #PBS -l epilogue=~ggdagw/epilogue.sh
-#PBS -l nodes=1:gpus=1,walltime=00:00:10
+#PBS -l nodes=1:gpus=1,walltime=00:00:30
 
 #! Mail to user if job aborts
 #PBS -m a
@@ -19,7 +19,7 @@ export OCL_DEVICE=$device
 application="./d2q9-bgk"
 
 #! Run options for the application
-options="input_128x128.params obstacles_128x128.dat"
+options="input_256x256.params obstacles_256x256.dat"
 
 ###############################################################
 ### You should not have to change anything below this line ####
