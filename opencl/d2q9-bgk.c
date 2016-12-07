@@ -141,9 +141,6 @@ int finalise(const t_param* params, t_speed** cells_ptr,
 ** The total should remain constant from one timestep to the next. */
 float total_density(const t_param params, t_speed* cells);
 
-/* compute average velocity */
-float av_velocity(const t_param params, t_speed* cells, int* obstacles, t_ocl ocl);
-
 /* calculate Reynolds number */
 float calc_reynolds(const t_param params, t_speed* cells, int* obstacles, float av_velocity, t_ocl ocl);
 
@@ -410,57 +407,6 @@ int propagate_collide_2(const t_param params, t_speed* cells, int* obstacles, t_
   checkError(err, "waiting for propagate_collide_2 kernel", __LINE__);
 
   return EXIT_SUCCESS;
-}
-
-float av_velocity(const t_param params, t_speed* cells, int* obstacles, t_ocl ocl)
-{
-  int    tot_cells = 0;  /* no. of cells used in calculation */
-  float tot_u;          /* accumulated magnitudes of velocity for each cell */
-
-  /* initialise */
-  tot_u = 0.0;
-
-  /* loop over all non-blocked cells */
-  for (int ii = 0; ii < params.ny; ii++)
-  {
-    for (int jj = 0; jj < params.nx; jj++)
-    {
-      /* ignore occupied cells */
-      if (!obstacles[ii * params.nx + jj])
-      {
-        /* local density total */
-        float local_density = 0.0;
-
-        for (int kk = 0; kk < NSPEEDS; kk++)
-        {
-          local_density += cells[ii * params.nx + jj].speeds[kk];
-        }
-
-        /* x-component of velocity */
-        float u_x = (cells[ii * params.nx + jj].speeds[1]
-                      + cells[ii * params.nx + jj].speeds[5]
-                      + cells[ii * params.nx + jj].speeds[8]
-                      - (cells[ii * params.nx + jj].speeds[3]
-                         + cells[ii * params.nx + jj].speeds[6]
-                         + cells[ii * params.nx + jj].speeds[7]))
-                     / local_density;
-        /* compute y velocity component */
-        float u_y = (cells[ii * params.nx + jj].speeds[2]
-                      + cells[ii * params.nx + jj].speeds[5]
-                      + cells[ii * params.nx + jj].speeds[6]
-                      - (cells[ii * params.nx + jj].speeds[4]
-                         + cells[ii * params.nx + jj].speeds[7]
-                         + cells[ii * params.nx + jj].speeds[8]))
-                     / local_density;
-        /* accumulate the norm of x- and y- velocity components */
-        tot_u += sqrt((u_x * u_x) + (u_y * u_y));
-        /* increase counter of inspected cells */
-        ++tot_cells;
-      }
-    }
-  }
-
-  return tot_u / (float)tot_cells;
 }
 
 int initialise(const char* paramfile, const char* obstaclefile,
