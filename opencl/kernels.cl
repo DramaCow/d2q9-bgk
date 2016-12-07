@@ -2,10 +2,29 @@
 
 #define NSPEEDS         9
 
+// SIZE value should be set by host program as a build argument,
+// else, use a default "big" value
+#ifndef SIZE
+  #define SIZE 1024 * 1024
+#endif
+
 typedef struct
 {
   float speeds[NSPEEDS];
 } t_speed;
+
+typedef struct
+{
+  float f0[SIZE];
+  float f1[SIZE];
+  float f2[SIZE];
+  float f3[SIZE];
+  float f4[SIZE];
+  float f5[SIZE];
+  float f6[SIZE];
+  float f7[SIZE];
+  float f8[SIZE];
+} t_speed_soa;
 
 void reduce(local  float*, global float*);
 

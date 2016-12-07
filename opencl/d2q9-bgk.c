@@ -203,7 +203,6 @@ int main(int argc, char* argv[])
 
   // host partial sum
   int nwork_groups = (params.nx * params.ny) / (LOCAL_X * LOCAL_Y);
-  printf("%d\n", nwork_groups);
   float* h_psum = calloc(sizeof(float), nwork_groups);
 
   // count number of cells
@@ -636,8 +635,13 @@ int initialise(const char* paramfile, const char* obstaclefile,
   free(ocl_src);
   checkError(err, "creating program", __LINE__);
 
+  // TODO: wtf?
+  // build options, allows kernel macros to be defined in host
+  char build_options[1024];
+  sprintf(build_options, "-D SIZE=%d", params->nx * params->ny);
+
   // Build OpenCL program
-  err = clBuildProgram(ocl->program, 1, &ocl->device, "", NULL, NULL);
+  err = clBuildProgram(ocl->program, 1, &ocl->device, build_options, NULL, NULL);
   if (err == CL_BUILD_PROGRAM_FAILURE)
   {
     size_t sz;
