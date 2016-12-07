@@ -2,10 +2,9 @@
 
 #define NSPEEDS         9
 
-// SIZE value should be set by host program as a build argument,
-// else, use a default "big" value
+// SIZE value should be set by host program as a build argument
 #ifndef SIZE
-  #define SIZE 1024 * 1024
+  #define SIZE 1024*1024
 #endif
 
 typedef struct
