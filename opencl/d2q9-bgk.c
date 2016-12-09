@@ -213,7 +213,7 @@ int main(int argc, char* argv[])
   // Write cells to OpenCL buffer
   err = clEnqueueWriteBuffer(
     ocl.queue, ocl.cells, CL_TRUE, 0,
-    sizeof(t_speed) * params.nx * params.ny, cells, 0, NULL, NULL);
+    sizeof(float) * NSPEEDS * params.nx * params.ny, cells, 0, NULL, NULL);
   checkError(err, "writing cells data", __LINE__);
 
   // Write obstacles to OpenCL buffer
@@ -256,7 +256,7 @@ int main(int argc, char* argv[])
   // Read cells from device
   err = clEnqueueReadBuffer(
     ocl.queue, ocl.cells, CL_TRUE, 0,
-    sizeof(t_speed) * params.nx * params.ny, cells, 0, NULL, NULL);
+    sizeof(float) * NSPEEDS * params.nx * params.ny, cells, 0, NULL, NULL);
   checkError(err, "reading cells data", __LINE__);
 
   gettimeofday(&timstr, NULL);
@@ -475,7 +475,6 @@ int initialise(const char* paramfile, const char* obstaclefile,
   */
 
   /* main grid */
-  //*cells_ptr = (t_speed*)malloc(sizeof(t_speed) * (params->ny * params->nx));
   *cells_ptr = (t_speed*)malloc(sizeof(float) * NSPEEDS * (params->ny * params->nx));
   if (*cells_ptr == NULL) die("cannot allocate memory for cells", __LINE__, __FILE__);
 
