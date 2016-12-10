@@ -414,22 +414,9 @@ void reduce(local  float* local_sums,
   int num_wrk_items  = get_local_size(0) * get_local_size(1);                 
   int local_id       = get_local_id(0) * get_local_size(0) + get_local_id(1);                   
   int group_id       = get_group_id(1) * get_num_groups(0) + get_group_id(0);                   
-   
-  for (int s = 1; s < num_wrk_items; s *= 2) {
-    int idx = 2 * s * local_id;
-
-    if (idx < num_wrk_items) {
-      local_sums[idx] += local_sums[idx + s];
-    }
-
-    barrier(CLK_LOCAL_MEM_FENCE);
-  }
-
-  if (local_id == 0) {                      
-    partial_sums[group_id] = local_sums[0];
-  }
 
 /*
+  // single workgroup reduction
   float sum;                              
   int i;                                      
 
@@ -443,4 +430,34 @@ void reduce(local  float* local_sums,
     partial_sums[group_id] = sum;         
   }
 */
+  
+/*
+  // interleaved addressing 
+  for (int s = 1; s < num_wrk_items; s *= 2) {
+    int idx = 2 * s * local_id;
+
+    if (idx < num_wrk_items) {
+      local_sums[idx] += local_sums[idx + s];
+    }
+
+    barrier(CLK_LOCAL_MEM_FENCE);
+  }
+
+  if (local_id == 0) {                      
+    partial_sums[group_id] = local_sums[0];
+  }
+*/
+
+  // sequential addressing
+  for (int s = num_wrk_items / 2; s > 0; s >>= 1) {
+    if (local_id < s) {
+      local_sums[local_id] += local_sums[local_id + s];
+    }
+
+    barrier(CLK_LOCAL_MEM_FENCE);
+  }
+
+  if (local_id == 0) {                      
+    partial_sums[group_id] = local_sums[0];
+  }
 }
