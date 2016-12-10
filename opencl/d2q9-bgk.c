@@ -91,10 +91,6 @@ typedef struct
   cl_command_queue  queue;
 
   cl_program program;
-  cl_kernel  accelerate_flow;
-  cl_kernel  propagate;
-  cl_kernel  rebound;
-
   cl_kernel  accelerate_flow_1;
   cl_kernel  accelerate_flow_2;
   cl_kernel  propagate_collide_1;
@@ -604,14 +600,6 @@ int initialise(const char* paramfile, const char* obstaclefile,
   checkError(err, "building program", __LINE__);
 
   // Create OpenCL kernels
-  // TODO: add remaining kernels here
-  ocl->accelerate_flow = clCreateKernel(ocl->program, "accelerate_flow", &err);
-  checkError(err, "creating accelerate_flow kernel", __LINE__);
-  ocl->propagate = clCreateKernel(ocl->program, "propagate", &err);
-  checkError(err, "creating propagate kernel", __LINE__);
-  ocl->rebound = clCreateKernel(ocl->program, "rebound", &err);
-  checkError(err, "creating rebound kernel", __LINE__);
-
   ocl->accelerate_flow_1 = clCreateKernel(ocl->program, "accelerate_flow_1", &err);
   checkError(err, "creating accelerate_flow_1 kernel", __LINE__);
   ocl->accelerate_flow_2 = clCreateKernel(ocl->program, "accelerate_flow_2", &err);
@@ -663,9 +651,6 @@ int finalise(const t_param* params, t_speed** cells_ptr,
   clReleaseMemObject(ocl.obstacles);
   clReleaseMemObject(ocl.d_partial_sums);
 
-  clReleaseKernel(ocl.accelerate_flow);
-  clReleaseKernel(ocl.propagate);
-  clReleaseKernel(ocl.rebound);
   clReleaseKernel(ocl.accelerate_flow_1);
   clReleaseKernel(ocl.accelerate_flow_2);
   clReleaseKernel(ocl.propagate_collide_1);
