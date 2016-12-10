@@ -411,20 +411,36 @@ kernel void propagate_collide_2(global t_speed* cells,
 void reduce(local  float* local_sums,                          
             global float* partial_sums)                        
 {                                                          
-   int num_wrk_items  = get_local_size(0) * get_local_size(1);                 
-   int local_id       = get_local_id(0) + get_local_id(1);                   
-   int group_id       = get_group_id(1) * get_num_groups(0) + get_group_id(0);                   
+  int num_wrk_items  = get_local_size(0) * get_local_size(1);                 
+  int local_id       = get_local_id(0) * get_local_size(0) + get_local_id(1);                   
+  int group_id       = get_group_id(1) * get_num_groups(0) + get_group_id(0);                   
    
-   float sum;                              
-   int i;                                      
+  for (int s = 1; s < num_wrk_items; s *= 2) {
+    int idx = 2 * s * local_id;
+
+    if (idx < num_wrk_items) {
+      local_sums[idx] += local_sums[idx + s];
+    }
+
+    barrier(CLK_LOCAL_MEM_FENCE);
+  }
+
+  if (local_id == 0) {                      
+    partial_sums[group_id] = local_sums[0];
+  }
+
+/*
+  float sum;                              
+  int i;                                      
+
+  if (local_id == 0) {                      
+    sum = 0.0f;                            
    
-   if (local_id == 0) {                      
-      sum = 0.0f;                            
+    for (i=0; i < num_wrk_items; i++) {        
+      sum += local_sums[i];             
+    }                                     
    
-      for (i=0; i < num_wrk_items; i++) {        
-          sum += local_sums[i];             
-      }                                     
-   
-      partial_sums[group_id] = sum;         
-   }
+    partial_sums[group_id] = sum;         
+  }
+*/
 }
