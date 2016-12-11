@@ -580,7 +580,7 @@ int initialise(const char* paramfile, const char* obstaclefile,
   // TODO: wtf?
   // build options, allows kernel macros to be defined in host
   char build_options[1024];
-  sprintf(build_options, "-D SIZE=%d", params->nx * params->ny);
+  sprintf(build_options, "-D SIZE=%d -cl-denorms-are-zero -cl-fast-relaxed-math", params->nx * params->ny);
 
   // Build OpenCL program
   err = clBuildProgram(ocl->program, 1, &ocl->device, build_options, NULL, NULL);
