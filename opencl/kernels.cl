@@ -243,6 +243,8 @@ kernel void propagate_collide_2(global t_speed* cells,
 
   float tot_u = 0.0f;
 
+  float nonblocked = !obstacles[ii * nx + jj] ? 1.0f : 0.0f;
+
   if (!obstacles[ii * nx + jj])
   { 
     // === "PROPAGATE" === aka. streaming
@@ -295,20 +297,20 @@ kernel void propagate_collide_2(global t_speed* cells,
     for (int kk = 0; kk < NSPEEDS; ++kk) {
       // directional velocity components
       float u_kk = u[kk][0]*u_x + u[kk][1]*u_y;
-      d_equ[kk] = w[kk] * omega * local_density * (1.0f + 3.0f*u_kk + 4.5f*u_kk*u_kk - 1.5f*u_sq);
+      d_equ[kk] = w[kk] * local_density * (1.0f + 3.0f*u_kk + 4.5f*u_kk*u_kk - 1.5f*u_sq);
     }
 
     // relaxation step
     // store cells speeds in current cell only
-    cells[ii * nx + jj].speeds[0] = (1.0f - omega)*tmp_speeds[0] + d_equ[0];
-    cells[ii * nx + jj].speeds[1] = (1.0f - omega)*tmp_speeds[1] + d_equ[1];
-    cells[ii * nx + jj].speeds[2] = (1.0f - omega)*tmp_speeds[2] + d_equ[2];
-    cells[ii * nx + jj].speeds[3] = (1.0f - omega)*tmp_speeds[3] + d_equ[3];
-    cells[ii * nx + jj].speeds[4] = (1.0f - omega)*tmp_speeds[4] + d_equ[4];
-    cells[ii * nx + jj].speeds[5] = (1.0f - omega)*tmp_speeds[5] + d_equ[5];
-    cells[ii * nx + jj].speeds[6] = (1.0f - omega)*tmp_speeds[6] + d_equ[6];
-    cells[ii * nx + jj].speeds[7] = (1.0f - omega)*tmp_speeds[7] + d_equ[7];
-    cells[ii * nx + jj].speeds[8] = (1.0f - omega)*tmp_speeds[8] + d_equ[8];
+    cells[ii * nx + jj].speeds[0] = tmp_speeds[0] - omega*(tmp_speeds[0] - d_equ[0]);
+    cells[ii * nx + jj].speeds[1] = tmp_speeds[1] - omega*(tmp_speeds[1] - d_equ[1]);
+    cells[ii * nx + jj].speeds[2] = tmp_speeds[2] - omega*(tmp_speeds[2] - d_equ[2]);
+    cells[ii * nx + jj].speeds[3] = tmp_speeds[3] - omega*(tmp_speeds[3] - d_equ[3]);
+    cells[ii * nx + jj].speeds[4] = tmp_speeds[4] - omega*(tmp_speeds[4] - d_equ[4]);
+    cells[ii * nx + jj].speeds[5] = tmp_speeds[5] - omega*(tmp_speeds[5] - d_equ[5]);
+    cells[ii * nx + jj].speeds[6] = tmp_speeds[6] - omega*(tmp_speeds[6] - d_equ[6]);
+    cells[ii * nx + jj].speeds[7] = tmp_speeds[7] - omega*(tmp_speeds[7] - d_equ[7]);
+    cells[ii * nx + jj].speeds[8] = tmp_speeds[8] - omega*(tmp_speeds[8] - d_equ[8]);
 
     // accumulate the norm of x- and y- velocity components
     tot_u += sqrt(u_x * u_x + u_y * u_y);
