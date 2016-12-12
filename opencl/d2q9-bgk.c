@@ -259,6 +259,14 @@ int main(int argc, char* argv[])
     sizeof(float) * NSPEEDS * params.nx * params.ny, cells, 0, NULL, NULL);
   checkError(err, "reading cells data", __LINE__);
 
+/*
+  // Read cells from device
+  err = clEnqueueReadBuffer(
+    ocl.queue, ocl.av_vels, CL_TRUE, 0,
+    sizeof(int) * params.maxIters, av_vels, 0, NULL, NULL);
+  checkError(err, "reading av_vels data", __LINE__);
+*/
+
   gettimeofday(&timstr, NULL);
   toc = timstr.tv_sec + (timstr.tv_usec / 1000000.0);
   getrusage(RUSAGE_SELF, &ru);
@@ -416,12 +424,13 @@ int reduce2(const t_param params, int tt, t_ocl ocl)
   // Set kernel arguments
   err = clSetKernelArg(ocl.reduce2, 0, sizeof(cl_mem), &ocl.d_partial_sums);
   checkError(err, "setting reduce2 arg 0", __LINE__);
-  err = clSetKernelArg(ocl.reduce2, 1, sizeof(cl_mem), &ocl.cells);
+  err = clSetKernelArg(ocl.reduce2, 1, sizeof(cl_mem), &ocl.av_vels);
   checkError(err, "setting reduce2 arg 1", __LINE__);
   err = clSetKernelArg(ocl.reduce2, 2, sizeof(cl_int), &tt);
   checkError(err, "setting reduce2 arg 2", __LINE__);
 
   // Enqueue kernel
+  // TODO: this only needs to be 1D
   size_t global[2] = {params.nx, params.ny};
   size_t local[2] = {LOCAL_X, LOCAL_Y};
   err = clEnqueueNDRangeKernel(ocl.queue, ocl.reduce2,
