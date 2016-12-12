@@ -95,11 +95,13 @@ typedef struct
   cl_kernel  accelerate_flow_2;
   cl_kernel  propagate_collide_1;
   cl_kernel  propagate_collide_2;
+  cl_kernel  reduce2;
 
   cl_mem cells;
   cl_mem obstacles;
 
   cl_mem d_partial_sums;
+  cl_mem av_vels;
 } t_ocl;
 
 /* struct to hold the 'speed' values */
@@ -126,6 +128,8 @@ int accelerate_flow_1(const t_param params, t_speed* cells, int* obstacles, t_oc
 int accelerate_flow_2(const t_param params, t_speed* cells, int* obstacles, t_ocl ocl);
 int propagate_collide_1(const t_param params, t_speed* cells, int* obstacles, t_ocl ocl);
 int propagate_collide_2(const t_param params, t_speed* cells, int* obstacles, t_ocl ocl);
+
+int reduce2(const t_param params, int tt, t_ocl ocl);
 
 int write_values(const t_param params, t_speed* cells, int* obstacles, float* av_vels);
 
@@ -405,6 +409,32 @@ int propagate_collide_2(const t_param params, t_speed* cells, int* obstacles, t_
   return EXIT_SUCCESS;
 }
 
+int reduce2(const t_param params, int tt, t_ocl ocl)
+{
+  cl_int err;
+
+  // Set kernel arguments
+  err = clSetKernelArg(ocl.reduce2, 0, sizeof(cl_mem), &ocl.d_partial_sums);
+  checkError(err, "setting reduce2 arg 0", __LINE__);
+  err = clSetKernelArg(ocl.reduce2, 1, sizeof(cl_mem), &ocl.cells);
+  checkError(err, "setting reduce2 arg 1", __LINE__);
+  err = clSetKernelArg(ocl.reduce2, 2, sizeof(cl_int), &tt);
+  checkError(err, "setting reduce2 arg 2", __LINE__);
+
+  // Enqueue kernel
+  size_t global[2] = {params.nx, params.ny};
+  size_t local[2] = {LOCAL_X, LOCAL_Y};
+  err = clEnqueueNDRangeKernel(ocl.queue, ocl.reduce2,
+                               2, NULL, global, local, 0, NULL, NULL);
+  checkError(err, "enqueueing reduce2 kernel", __LINE__);
+
+  // Wait for kernel to finish
+  err = clFinish(ocl.queue);
+  checkError(err, "waiting for reduce2 kernel", __LINE__);
+
+  return EXIT_SUCCESS;
+}
+
 int initialise(const char* paramfile, const char* obstaclefile,
                t_param* params, t_speed** cells_ptr, 
                int** obstacles_ptr, float** av_vels_ptr, t_ocl *ocl)
@@ -577,7 +607,6 @@ int initialise(const char* paramfile, const char* obstaclefile,
   free(ocl_src);
   checkError(err, "creating program", __LINE__);
 
-  // TODO: wtf?
   // build options, allows kernel macros to be defined in host
   char build_options[1024];
   sprintf(build_options, "-D SIZE=%d -cl-denorms-are-zero -cl-fast-relaxed-math", params->nx * params->ny);
@@ -608,6 +637,8 @@ int initialise(const char* paramfile, const char* obstaclefile,
   checkError(err, "creating propagate_collide_1 kernel", __LINE__);
   ocl->propagate_collide_2 = clCreateKernel(ocl->program, "propagate_collide_2", &err);
   checkError(err, "creating propagate_collide_2 kernel", __LINE__);
+  ocl->reduce2 = clCreateKernel(ocl->program, "reduce2", &err);
+  checkError(err, "creating reduce2 kernel", __LINE__);
 
   // Allocate OpenCL buffers
   // TODO: define memory here
@@ -620,6 +651,10 @@ int initialise(const char* paramfile, const char* obstaclefile,
     ocl->context, CL_MEM_READ_WRITE,
     sizeof(cl_int) * params->nx * params->ny, NULL, &err);
   checkError(err, "creating obstacles buffer", __LINE__);
+  ocl->av_vels = clCreateBuffer(
+    ocl->context, CL_MEM_READ_WRITE,
+    sizeof(cl_int) * params->maxIters, NULL, &err);
+  checkError(err, "creating av_vels buffer", __LINE__);
 
   // TODO:
   int nwork_groups = (params->nx * params->ny) / (LOCAL_X * LOCAL_Y);
@@ -650,11 +685,13 @@ int finalise(const t_param* params, t_speed** cells_ptr,
   clReleaseMemObject(ocl.cells);
   clReleaseMemObject(ocl.obstacles);
   clReleaseMemObject(ocl.d_partial_sums);
+  clReleaseMemObject(ocl.av_vels);
 
   clReleaseKernel(ocl.accelerate_flow_1);
   clReleaseKernel(ocl.accelerate_flow_2);
   clReleaseKernel(ocl.propagate_collide_1);
   clReleaseKernel(ocl.propagate_collide_2);
+  clReleaseKernel(ocl.reduce2);
 
   clReleaseProgram(ocl.program);
 

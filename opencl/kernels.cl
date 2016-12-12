@@ -382,18 +382,25 @@ void reduce(local  float* local_sums,
   }
 }
 
-void reduce2(global float* local_sums,                          
-             global float* partial_sums)                        
+kernel void reduce2(local  float* local_sums,                          
+                    global float* result, 
+                    int tt)                        
 {                                                          
-  int num_wrk_items  = get_local_size(0) * get_local_size(1);                 
   int local_id       = get_local_id(0) * get_local_size(0) + get_local_id(1);                   
   int group_id       = get_group_id(1) * get_num_groups(0) + get_group_id(0);
   int num_wrk_groups = get_num_groups(0) * get_num_groups(1);
-  int global_id      = get_global_id(1) * get_global_size(0) + get_global_id(0);
 
-  if (group_id < num_wrk_groups) {
+  if (group_id == 0) {
     for (int s = num_wrk_groups / 2; s > 0; s >>= 1) {
-      
+      if (local_id < s) {
+        local_sums[local_id] += local_sums[local_id + s];
+      }
+
+      barrier(CLK_LOCAL_MEM_FENCE);
+    }
+
+    if (local_id == 0) {                      
+      result[tt] = local_sums[0];
     }
   }
 }
