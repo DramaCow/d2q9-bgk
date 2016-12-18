@@ -310,8 +310,7 @@ int accelerate_flow_1(const t_param params, t_speed* cells, int* obstacles, t_oc
 
   // Enqueue kernel
   size_t global[1] = {params.nx};
-  err = clEnqueueNDRangeKernel(ocl.queue, ocl.accelerate_flow_1,
-                               1, NULL, global, NULL, 0, NULL, NULL);
+  err = clEnqueueNDRangeKernel(ocl.queue, ocl.accelerate_flow_1, 1, NULL, global, NULL, 0, NULL, NULL);
   checkError(err, "enqueueing accelerate_flow_1 kernel", __LINE__);
 
   return EXIT_SUCCESS;
@@ -323,8 +322,7 @@ int accelerate_flow_2(const t_param params, t_speed* cells, int* obstacles, t_oc
 
   // Enqueue kernel
   size_t global[1] = {params.nx};
-  err = clEnqueueNDRangeKernel(ocl.queue, ocl.accelerate_flow_2,
-                               1, NULL, global, NULL, 0, NULL, NULL);
+  err = clEnqueueNDRangeKernel(ocl.queue, ocl.accelerate_flow_2, 1, NULL, global, NULL, 0, NULL, NULL);
   checkError(err, "enqueueing accelerate_flow_2 kernel", __LINE__);
 
   return EXIT_SUCCESS;
@@ -337,8 +335,7 @@ int propagate_collide_1(const t_param params, t_speed* cells, int* obstacles, t_
   // Enqueue kernel
   size_t global[2] = {params.nx, params.ny};
   size_t local[2] = {LOCAL_X, LOCAL_Y};
-  err = clEnqueueNDRangeKernel(ocl.queue, ocl.propagate_collide_1,
-                               2, NULL, global, local, 0, NULL, NULL);
+  err = clEnqueueNDRangeKernel(ocl.queue, ocl.propagate_collide_1, 2, NULL, global, local, 0, NULL, NULL);
   checkError(err, "enqueueing propagate_collide_1 kernel", __LINE__);
 
   return EXIT_SUCCESS;
@@ -351,8 +348,7 @@ int propagate_collide_2(const t_param params, t_speed* cells, int* obstacles, t_
   // Enqueue kernel
   size_t global[2] = {params.nx, params.ny};
   size_t local[2] = {LOCAL_X, LOCAL_Y};
-  err = clEnqueueNDRangeKernel(ocl.queue, ocl.propagate_collide_2,
-                               2, NULL, global, local, 0, NULL, NULL);
+  err = clEnqueueNDRangeKernel(ocl.queue, ocl.propagate_collide_2, 2, NULL, global, local, 0, NULL, NULL);
   checkError(err, "enqueueing propagate_collide_2 kernel", __LINE__);
 
   return EXIT_SUCCESS;
@@ -369,8 +365,7 @@ int reduce2(const t_param params, int tt, t_ocl ocl)
   // TODO: this only needs to be 1D
   size_t global[1] = {params.nx * params.ny};
   size_t local[1] = {LOCAL_X * LOCAL_Y};
-  err = clEnqueueNDRangeKernel(ocl.queue, ocl.reduce2,
-                               1, NULL, global, local, 0, NULL, NULL);
+  err = clEnqueueNDRangeKernel(ocl.queue, ocl.reduce2, 1, NULL, global, local, 0, NULL, NULL);
   checkError(err, "enqueueing reduce2 kernel", __LINE__);
 
   return EXIT_SUCCESS;
