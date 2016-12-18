@@ -385,14 +385,14 @@ void reduce(local  float* local_sums,
 kernel void reduce2(global float* partial_sums,  
                     local  float* local_sums,
                     global float* av_vels,
+                    int num_wrk_groups,
                     int tt)                        
 {                                                          
   int local_id       = get_local_id(0);
   int group_id       = get_group_id(0);
-  int num_wrk_groups = get_num_groups(0);
-  int num_wrk_items  = get_local_size(0);
+  int num_wrk_items  = get_local_size(0); 
 
-  if (group_id == 0) {
+  if (group_id == 0) { //&& local_id < num_wrk_items) {
     float sum = 0.0f;
     for (int i = local_id; i < num_wrk_groups; i += num_wrk_items) {
       sum += partial_sums[i];
@@ -401,7 +401,7 @@ kernel void reduce2(global float* partial_sums,
 
     barrier(CLK_LOCAL_MEM_FENCE);
 
-    for (int s = num_wrk_groups / 2; s > 0; s >>= 1) {
+    for (int s = num_wrk_items / 2; s > 0; s >>= 1) {
       if (local_id < s) {
         local_sums[local_id] += local_sums[local_id + s];
       }

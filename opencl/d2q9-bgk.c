@@ -369,8 +369,8 @@ int reduce2(const t_param params, int tt, t_ocl ocl)
 {
   cl_int err;
 
-  err = clSetKernelArg(ocl.reduce2, 3, sizeof(cl_int), &tt);
-  checkError(err, "setting reduce2 arg 2", __LINE__);
+  err = clSetKernelArg(ocl.reduce2, 4, sizeof(cl_int), &tt);
+  checkError(err, "setting reduce2 arg 4", __LINE__);
 
   // Enqueue kernel
   // TODO: this only needs to be 1D
@@ -451,12 +451,16 @@ int init_kernel_args(const t_param params, t_speed* cells, int* obstacles, t_ocl
   checkError(err, "setting propagate_collide_2 arg 6", __LINE__);
 
   // Set kernel arguments
+  int nwork_groups = (params.nx * params.ny) / (LOCAL_X * LOCAL_Y);
   err = clSetKernelArg(ocl.reduce2, 0, sizeof(cl_mem), &ocl.d_partial_sums);
   checkError(err, "setting reduce2 arg 0", __LINE__);
-  err = clSetKernelArg(ocl.reduce2, 1, sizeof(float) * LOCAL_X * LOCAL_Y, NULL);
-  checkError(err, "setting reduce2 arg 0", __LINE__);
-  err = clSetKernelArg(ocl.reduce2, 2, sizeof(cl_mem), &ocl.av_vels);
+  //err = clSetKernelArg(ocl.reduce2, 1, sizeof(float) * nwork_groups, NULL);
+  err = clSetKernelArg(ocl.reduce2, 1, sizeof(float) * (LOCAL_X * LOCAL_Y), NULL);
   checkError(err, "setting reduce2 arg 1", __LINE__);
+  err = clSetKernelArg(ocl.reduce2, 2, sizeof(cl_mem), &ocl.av_vels);
+  checkError(err, "setting reduce2 arg 2", __LINE__);
+  err = clSetKernelArg(ocl.reduce2, 3, sizeof(cl_int), &nwork_groups);
+  checkError(err, "setting reduce2 arg 3", __LINE__);
 
   return EXIT_SUCCESS;
 }
