@@ -229,7 +229,10 @@ int main(int argc, char* argv[])
     accelerate_flow_1(params, cells, obstacles, ocl);
     propagate_collide_1(params, cells, obstacles, ocl);
     reduce2(params, tt, ocl);
-/*
+/*  
+    err = clFinish(ocl.queue);
+    checkError(err, "waiting for all kernels", __LINE__);
+
     // Read d_partial_sums from device
     err = clEnqueueReadBuffer(
       ocl.queue, ocl.d_partial_sums, CL_TRUE, 0,
@@ -246,6 +249,9 @@ int main(int argc, char* argv[])
     propagate_collide_2(params, cells, obstacles, ocl);
     reduce2(params, tt+1, ocl);
 /*
+    err = clFinish(ocl.queue);
+    checkError(err, "waiting for all kernels", __LINE__);
+
     err = clEnqueueReadBuffer(
       ocl.queue, ocl.d_partial_sums, CL_TRUE, 0,
       sizeof(float) * nwork_groups, h_psum, 0, NULL, NULL);
@@ -258,6 +264,9 @@ int main(int argc, char* argv[])
     av_vels[tt+1] = tot_u / tot_cells;
 */
   }
+
+  err = clFinish(ocl.queue);
+  checkError(err, "waiting for all kernels", __LINE__);
 
   // Read cells from device
   err = clEnqueueReadBuffer(
@@ -305,10 +314,6 @@ int accelerate_flow_1(const t_param params, t_speed* cells, int* obstacles, t_oc
                                1, NULL, global, NULL, 0, NULL, NULL);
   checkError(err, "enqueueing accelerate_flow_1 kernel", __LINE__);
 
-  // Wait for kernel to finish
-  err = clFinish(ocl.queue);
-  checkError(err, "waiting for accelerate_flow_1 kernel", __LINE__);
-
   return EXIT_SUCCESS;
 }
 
@@ -321,10 +326,6 @@ int accelerate_flow_2(const t_param params, t_speed* cells, int* obstacles, t_oc
   err = clEnqueueNDRangeKernel(ocl.queue, ocl.accelerate_flow_2,
                                1, NULL, global, NULL, 0, NULL, NULL);
   checkError(err, "enqueueing accelerate_flow_2 kernel", __LINE__);
-
-  // Wait for kernel to finish
-  err = clFinish(ocl.queue);
-  checkError(err, "waiting for accelerate_flow_2 kernel", __LINE__);
 
   return EXIT_SUCCESS;
 }
@@ -340,10 +341,6 @@ int propagate_collide_1(const t_param params, t_speed* cells, int* obstacles, t_
                                2, NULL, global, local, 0, NULL, NULL);
   checkError(err, "enqueueing propagate_collide_1 kernel", __LINE__);
 
-  // Wait for kernel to finish
-  err = clFinish(ocl.queue);
-  checkError(err, "waiting for propagate_collide_1 kernel", __LINE__);
-
   return EXIT_SUCCESS;
 }
 
@@ -357,10 +354,6 @@ int propagate_collide_2(const t_param params, t_speed* cells, int* obstacles, t_
   err = clEnqueueNDRangeKernel(ocl.queue, ocl.propagate_collide_2,
                                2, NULL, global, local, 0, NULL, NULL);
   checkError(err, "enqueueing propagate_collide_2 kernel", __LINE__);
-
-  // Wait for kernel to finish
-  err = clFinish(ocl.queue);
-  checkError(err, "waiting for propagate_collide_2 kernel", __LINE__);
 
   return EXIT_SUCCESS;
 }
@@ -379,10 +372,6 @@ int reduce2(const t_param params, int tt, t_ocl ocl)
   err = clEnqueueNDRangeKernel(ocl.queue, ocl.reduce2,
                                1, NULL, global, local, 0, NULL, NULL);
   checkError(err, "enqueueing reduce2 kernel", __LINE__);
-
-  // Wait for kernel to finish
-  err = clFinish(ocl.queue);
-  checkError(err, "waiting for reduce2 kernel", __LINE__);
 
   return EXIT_SUCCESS;
 }
