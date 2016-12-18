@@ -225,7 +225,8 @@ int main(int argc, char* argv[])
   for (int tt = 0; tt < params.maxIters; tt+=2) {
     accelerate_flow_1(params, cells, obstacles, ocl);
     propagate_collide_1(params, cells, obstacles, ocl);
-
+    reduce2(params, tt, ocl);
+/*
     // Read d_partial_sums from device
     err = clEnqueueReadBuffer(
       ocl.queue, ocl.d_partial_sums, CL_TRUE, 0,
@@ -237,10 +238,11 @@ int main(int argc, char* argv[])
       tot_u += h_psum[ii];
     }
     av_vels[tt] = tot_u / tot_cells;
-
+*/
     accelerate_flow_2(params, cells, obstacles, ocl);
     propagate_collide_2(params, cells, obstacles, ocl);
-
+    reduce2(params, tt+1, ocl);
+/*
     err = clEnqueueReadBuffer(
       ocl.queue, ocl.d_partial_sums, CL_TRUE, 0,
       sizeof(float) * nwork_groups, h_psum, 0, NULL, NULL);
@@ -251,6 +253,7 @@ int main(int argc, char* argv[])
       tot_u += h_psum[ii];
     }
     av_vels[tt+1] = tot_u / tot_cells;
+*/
   }
 
   // Read cells from device
@@ -259,13 +262,15 @@ int main(int argc, char* argv[])
     sizeof(float) * NSPEEDS * params.nx * params.ny, cells, 0, NULL, NULL);
   checkError(err, "reading cells data", __LINE__);
 
-/*
   // Read cells from device
   err = clEnqueueReadBuffer(
     ocl.queue, ocl.av_vels, CL_TRUE, 0,
-    sizeof(int) * params.maxIters, av_vels, 0, NULL, NULL);
+    sizeof(float) * params.maxIters, av_vels, 0, NULL, NULL);
   checkError(err, "reading av_vels data", __LINE__);
-*/
+
+  for (int tt = 0; tt < params.maxIters; ++tt) {
+    av_vels[tt] /= tot_cells;
+  }
 
   gettimeofday(&timstr, NULL);
   toc = timstr.tv_sec + (timstr.tv_usec / 1000000.0);
@@ -424,17 +429,19 @@ int reduce2(const t_param params, int tt, t_ocl ocl)
   // Set kernel arguments
   err = clSetKernelArg(ocl.reduce2, 0, sizeof(cl_mem), &ocl.d_partial_sums);
   checkError(err, "setting reduce2 arg 0", __LINE__);
-  err = clSetKernelArg(ocl.reduce2, 1, sizeof(cl_mem), &ocl.av_vels);
+  err = clSetKernelArg(ocl.reduce2, 1, sizeof(float) * LOCAL_X * LOCAL_Y, NULL);
+  checkError(err, "setting reduce2 arg 0", __LINE__);
+  err = clSetKernelArg(ocl.reduce2, 2, sizeof(cl_mem), &ocl.av_vels);
   checkError(err, "setting reduce2 arg 1", __LINE__);
-  err = clSetKernelArg(ocl.reduce2, 2, sizeof(cl_int), &tt);
+  err = clSetKernelArg(ocl.reduce2, 3, sizeof(cl_int), &tt);
   checkError(err, "setting reduce2 arg 2", __LINE__);
 
   // Enqueue kernel
   // TODO: this only needs to be 1D
-  size_t global[2] = {params.nx, params.ny};
-  size_t local[2] = {LOCAL_X, LOCAL_Y};
+  size_t global[1] = {params.nx * params.ny};
+  size_t local[1] = {LOCAL_X * LOCAL_Y};
   err = clEnqueueNDRangeKernel(ocl.queue, ocl.reduce2,
-                               2, NULL, global, local, 0, NULL, NULL);
+                               1, NULL, global, local, 0, NULL, NULL);
   checkError(err, "enqueueing reduce2 kernel", __LINE__);
 
   // Wait for kernel to finish
@@ -662,7 +669,7 @@ int initialise(const char* paramfile, const char* obstaclefile,
   checkError(err, "creating obstacles buffer", __LINE__);
   ocl->av_vels = clCreateBuffer(
     ocl->context, CL_MEM_READ_WRITE,
-    sizeof(cl_int) * params->maxIters, NULL, &err);
+    sizeof(cl_float) * params->maxIters, NULL, &err);
   checkError(err, "creating av_vels buffer", __LINE__);
 
   // TODO:

@@ -187,8 +187,7 @@ kernel void propagate_collide_1(global t_speed* cells,
     // equilibrium densities
     float omega_d_equ[NSPEEDS];
     for (int kk = 0; kk < NSPEEDS; ++kk) {
-      // directional velocity components
-      float u_kk = u[kk][0]*u_x + u[kk][1]*u_y;
+      float u_kk = u[kk][0]*u_x + u[kk][1]*u_y; // directional velocity components
       omega_d_equ[kk] = w[kk] * omega * local_density * (1.0f + 3.0f*u_kk + 4.5f*u_kk*u_kk - 1.5f*u_sq);
     }
 
@@ -243,7 +242,7 @@ kernel void propagate_collide_2(global t_speed* cells,
 
   float tot_u = 0.0f;
 
-  float nonblocked = !obstacles[ii * nx + jj] ? 1.0f : 0.0f;
+  //float nonblocked = !obstacles[ii * nx + jj] ? 1.0f : 0.0f;
 
   if (!obstacles[ii * nx + jj])
   { 
@@ -295,8 +294,7 @@ kernel void propagate_collide_2(global t_speed* cells,
     // equilibrium densities
     float d_equ[NSPEEDS];
     for (int kk = 0; kk < NSPEEDS; ++kk) {
-      // directional velocity components
-      float u_kk = u[kk][0]*u_x + u[kk][1]*u_y;
+      float u_kk = u[kk][0]*u_x + u[kk][1]*u_y; // directional velocity components
       d_equ[kk] = w[kk] * local_density * (1.0f + 3.0f*u_kk + 4.5f*u_kk*u_kk - 1.5f*u_sq);
     }
 
@@ -382,9 +380,9 @@ void reduce(local  float* local_sums,
   }
 }
 
-kernel void reduce2(global float* partial_sums,  
+kernel void reduce2(global float* global_sums,                          
                     local  float* local_sums,
-                    global float* av_vels,
+                    global float* av_vels, 
                     int tt)                        
 {                                                          
   int local_id       = get_local_id(0);
@@ -393,15 +391,13 @@ kernel void reduce2(global float* partial_sums,
   int num_wrk_items  = get_local_size(0);
 
   if (group_id == 0) {
-    float sum = 0.0f;
+    local_sums[local_id] = 0.0f;
     for (int i = local_id; i < num_wrk_groups; i += num_wrk_items) {
-      sum += partial_sums[i];
-    } 
-    local_sums[local_id] = sum;
-
+      local_sums[local_id] += global_sums[i];
+    }
     barrier(CLK_LOCAL_MEM_FENCE);
 
-    for (int s = num_wrk_groups / 2; s > 0; s >>= 1) {
+    for (int s = num_wrk_items / 2; s > 0; s >>= 1) {
       if (local_id < s) {
         local_sums[local_id] += local_sums[local_id + s];
       }
