@@ -68,8 +68,8 @@
 #define AVVELSFILE      "av_vels.dat"
 #define OCLFILE         "kernels.cl"
 
-#define LOCAL_X 16
-#define LOCAL_Y 16
+#define LOCAL_X 32
+#define LOCAL_Y 4
 
 /* struct to hold the parameter values */
 typedef struct
