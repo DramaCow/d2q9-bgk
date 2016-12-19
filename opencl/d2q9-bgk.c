@@ -181,10 +181,6 @@ int main(int argc, char* argv[])
   /* initialise our data structures and load values from file */
   initialise(paramfile, obstaclefile, &params, &cells, &obstacles, &av_vels, &ocl);
 
-  // host partial sum
-  int nwork_groups = (params.nx * params.ny) / (LOCAL_X * LOCAL_Y);
-  float* h_psum = calloc(sizeof(float), nwork_groups);
-
   // count number of cells
   float tot_cells = 0.0f;
   for (int ii = 0; ii < params.nx * params.ny; ii++) if (!obstacles[ii]) ++tot_cells;
