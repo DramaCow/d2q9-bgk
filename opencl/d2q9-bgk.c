@@ -96,6 +96,7 @@ typedef struct
   cl_kernel  propagate_collide_1;
   cl_kernel  propagate_collide_2;
   cl_kernel  reduce2;
+  cl_kernel  divide;
 
   cl_mem cells;
   cl_mem obstacles;
@@ -124,7 +125,7 @@ int propagate_collide_1(const t_param params, float* cells, int* obstacles, t_oc
 int propagate_collide_2(const t_param params, float* cells, int* obstacles, t_ocl ocl);
 int reduce2(const t_param params, int tt, t_ocl ocl);
 
-int init_kernel_args(const t_param params, float* cells, int* obstacles, t_ocl ocl);
+int init_kernel_args(const t_param params, float* cells, int* obstacles, float tot_cells, t_ocl ocl);
 
 int write_values(const t_param params, float* cells, int* obstacles, float* av_vels);
 
@@ -204,7 +205,7 @@ int main(int argc, char* argv[])
     sizeof(cl_int) * params.nx * params.ny, obstacles, 0, NULL, NULL);
   checkError(err, "writing obstacles data", __LINE__);
 
-  init_kernel_args(params, cells, obstacles, ocl);
+  init_kernel_args(params, cells, obstacles, tot_cells, ocl);
 
   for (int tt = 0; tt < params.maxIters; tt+=2) {
     accelerate_flow_1(params, cells, obstacles, ocl);
@@ -215,6 +216,10 @@ int main(int argc, char* argv[])
     propagate_collide_2(params, cells, obstacles, ocl);
     reduce2(params, tt+1, ocl);
   }
+
+  size_t global[1] = {params.maxIters};
+  err = clEnqueueNDRangeKernel(ocl.queue, ocl.divide, 1, NULL, global, NULL, 0, NULL, NULL);
+  checkError(err, "enqueueing divide kernel", __LINE__);
 
   err = clFinish(ocl.queue);
   checkError(err, "waiting for all kernels", __LINE__);
@@ -231,9 +236,9 @@ int main(int argc, char* argv[])
     sizeof(float) * params.maxIters, av_vels, 0, NULL, NULL);
   checkError(err, "reading av_vels data", __LINE__);
 
-  for (int tt = 0; tt < params.maxIters; ++tt) {
-    av_vels[tt] /= tot_cells;
-  }
+  //for (int tt = 0; tt < params.maxIters; ++tt) {
+  //  av_vels[tt] /= tot_cells;
+  //}
 
   gettimeofday(&timstr, NULL);
   toc = timstr.tv_sec + (timstr.tv_usec / 1000000.0);
@@ -321,7 +326,7 @@ int reduce2(const t_param params, int tt, t_ocl ocl)
   return EXIT_SUCCESS;
 }
 
-int init_kernel_args(const t_param params, float* cells, int* obstacles, t_ocl ocl) {
+int init_kernel_args(const t_param params, float* cells, int* obstacles, float tot_cells, t_ocl ocl) {
   cl_int err;
 
   // Set kernel arguments
@@ -394,6 +399,12 @@ int init_kernel_args(const t_param params, float* cells, int* obstacles, t_ocl o
   int nwork_groups = (params.nx * params.ny) / (LOCAL_X * LOCAL_Y);
   err = clSetKernelArg(ocl.reduce2, 3, sizeof(cl_int), &nwork_groups);
   checkError(err, "setting reduce2 arg 3", __LINE__);
+
+  // Set kernel arguments
+  err = clSetKernelArg(ocl.divide, 0, sizeof(cl_mem), &ocl.av_vels);
+  checkError(err, "setting divide arg 0", __LINE__);
+  err = clSetKernelArg(ocl.divide, 1, sizeof(cl_float), &tot_cells);
+  checkError(err, "setting divide arg 1", __LINE__);
 
   return EXIT_SUCCESS;
 }
@@ -602,6 +613,8 @@ int initialise(const char* paramfile, const char* obstaclefile,
   checkError(err, "creating propagate_collide_2 kernel", __LINE__);
   ocl->reduce2 = clCreateKernel(ocl->program, "reduce2", &err);
   checkError(err, "creating reduce2 kernel", __LINE__);
+  ocl->divide = clCreateKernel(ocl->program, "divide", &err);
+  checkError(err, "creating divide kernel", __LINE__);
 
   // Allocate OpenCL buffers
   // TODO: define memory here
@@ -655,6 +668,7 @@ int finalise(const t_param* params, float** cells_ptr,
   clReleaseKernel(ocl.propagate_collide_1);
   clReleaseKernel(ocl.propagate_collide_2);
   clReleaseKernel(ocl.reduce2);
+  clReleaseKernel(ocl.divide);
 
   clReleaseProgram(ocl.program);
 

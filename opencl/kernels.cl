@@ -411,3 +411,8 @@ kernel void reduce2(global float* partial_sums,
     }
   }
 }
+
+kernel void divide(global float* av_vels, float tot_cells) {
+  int tt = get_global_id(0);
+  av_vels[tt] /= tot_cells;
+}
