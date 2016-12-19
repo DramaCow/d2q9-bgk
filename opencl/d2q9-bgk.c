@@ -186,19 +186,6 @@ int main(int argc, char* argv[])
   /* initialise our data structures and load values from file */
   initialise(paramfile, obstaclefile, &params, &cells, &obstacles, &av_vels, &ocl);
 
-  // Find kernel work-group size
-  /*
-  size_t work_group_size_1, work_group_size_2;
-  err = clGetKernelWorkGroupInfo (ocl.propagate_collide_1, ocl.device, CL_KERNEL_WORK_GROUP_SIZE, sizeof(size_t), &work_group_size_1, NULL);
-  checkError(err, "Getting propagate_collide_1 work group info", __LINE__);
-  err = clGetKernelWorkGroupInfo (ocl.propagate_collide_2, ocl.device, CL_KERNEL_WORK_GROUP_SIZE, sizeof(size_t), &work_group_size_2, NULL);
-  checkError(err, "Getting propagate_collide_2 work group info", __LINE__);
-  printf("%lu, %lu\n", work_group_size_1, work_group_size_2);
-
-  int nwork_groups = (params.nx * params.ny) / work_group_size_1;
-  printf("%d\n", nwork_groups);
-  */
-
   // host partial sum
   int nwork_groups = (params.nx * params.ny) / (LOCAL_X * LOCAL_Y);
   float* h_psum = calloc(sizeof(float), nwork_groups);
@@ -206,11 +193,6 @@ int main(int argc, char* argv[])
   // count number of cells
   float tot_cells = 0.0f;
   for (int ii = 0; ii < params.nx * params.ny; ii++) if (!obstacles[ii]) ++tot_cells;
-
-  // set kernel dimensions
-  //size_t globalR[1] = {params.nx};
-  //size_t global1D[1] = {params.nx * params.ny}, local1D[1] = {LOCAL_X * LOCAL_Y};
-  //size_t global2D[2] = {params.nx , params.ny}, local2D[2] = {LOCAL_X , LOCAL_Y};
 
   /* iterate for maxIters timesteps */
   gettimeofday(&timstr, NULL);
@@ -232,62 +214,12 @@ int main(int argc, char* argv[])
 
   for (int tt = 0; tt < params.maxIters; tt+=2) {
     accelerate_flow_1(params, cells, obstacles, ocl);
-    //err = clEnqueueNDRangeKernel(ocl.queue, ocl.accelerate_flow_1, 1, NULL, globalR, NULL, 0, NULL, NULL);
-    //checkError(err, "enqueueing accelerate_flow_1 kernel", __LINE__);
     propagate_collide_1(params, cells, obstacles, ocl);
-    //err = clEnqueueNDRangeKernel(ocl.queue, ocl.propagate_collide_1, 2, NULL, global2D, local2D, 0, NULL, NULL);
-    //checkError(err, "enqueueing propagate_collide_1 kernel", __LINE__);
     reduce2(params, tt, ocl);
-    //err = clSetKernelArg(ocl.reduce2, 4, sizeof(cl_int), &tt);
-    //checkError(err, "setting reduce2 arg 4", __LINE__);
-    //err = clEnqueueNDRangeKernel(ocl.queue, ocl.reduce2, 1, NULL, global1D, local1D, 0, NULL, NULL);
-    //checkError(err, "enqueueing reduce2 kernel", __LINE__);
-
-/*  
-    err = clFinish(ocl.queue);
-    checkError(err, "=waiting for all kernels", __LINE__);
-
-    // Read d_partial_sums from device
-    err = clEnqueueReadBuffer(
-      ocl.queue, ocl.d_partial_sums, CL_TRUE, 0,
-      sizeof(float) * nwork_groups, h_psum, 0, NULL, NULL);
-    checkError(err, "reading d_partial_sums data", __LINE__);
-
-    float tot_u = 0.0f;
-    for (int ii = 0; ii < nwork_groups; ++ii) {
-      tot_u += h_psum[ii];
-    }
-    av_vels[tt] = tot_u / tot_cells;
-*/
 
     accelerate_flow_2(params, cells, obstacles, ocl);
-    //err = clEnqueueNDRangeKernel(ocl.queue, ocl.accelerate_flow_2, 1, NULL, globalR, NULL, 0, NULL, NULL);
-    //checkError(err, "enqueueing accelerate_flow_2 kernel", __LINE__);
     propagate_collide_2(params, cells, obstacles, ocl);
-    //err = clEnqueueNDRangeKernel(ocl.queue, ocl.propagate_collide_2, 2, NULL, global2D, local2D, 0, NULL, NULL);
-    //checkError(err, "enqueueing propagate_collide_2 kernel", __LINE__);
     reduce2(params, tt+1, ocl);
-    //++tt;
-    //err = clSetKernelArg(ocl.reduce2, 4, sizeof(cl_int), &tt);
-    //checkError(err, "setting reduce2 arg 4", __LINE__);
-    //err = clEnqueueNDRangeKernel(ocl.queue, ocl.reduce2, 1, NULL, global1D, local1D, 0, NULL, NULL);
-    //checkError(err, "enqueueing reduce2 kernel", __LINE__);
-
-/*
-    err = clFinish(ocl.queue);
-    checkError(err, "waiting for all kernels", __LINE__);
-
-    err = clEnqueueReadBuffer(
-      ocl.queue, ocl.d_partial_sums, CL_TRUE, 0,
-      sizeof(float) * nwork_groups, h_psum, 0, NULL, NULL);
-    checkError(err, "reading d_partial_sums data", __LINE__);
-
-    tot_u = 0.0f;
-    for (int ii = 0; ii < nwork_groups; ++ii) {
-      tot_u += h_psum[ii];
-    }
-    av_vels[tt+1] = tot_u / tot_cells;
-*/
   }
 
   err = clFinish(ocl.queue);
@@ -387,7 +319,6 @@ int reduce2(const t_param params, int tt, t_ocl ocl)
   checkError(err, "setting reduce2 arg 4", __LINE__);
 
   // Enqueue kernel
-  // TODO: this only needs to be 1D
   size_t global1D[1] = {params.nx * params.ny};
   size_t local1D[1] = {LOCAL_X * LOCAL_Y};
   err = clEnqueueNDRangeKernel(ocl.queue, ocl.reduce2, 1, NULL, global1D, local1D, 0, NULL, NULL);
@@ -460,14 +391,13 @@ int init_kernel_args(const t_param params, t_speed* cells, int* obstacles, t_ocl
   checkError(err, "setting propagate_collide_2 arg 6", __LINE__);
 
   // Set kernel arguments
-  int nwork_groups = (params.nx * params.ny) / (LOCAL_X * LOCAL_Y);
   err = clSetKernelArg(ocl.reduce2, 0, sizeof(cl_mem), &ocl.d_partial_sums);
   checkError(err, "setting reduce2 arg 0", __LINE__);
-  //err = clSetKernelArg(ocl.reduce2, 1, sizeof(float) * nwork_groups, NULL);
   err = clSetKernelArg(ocl.reduce2, 1, sizeof(float) * (LOCAL_X * LOCAL_Y), NULL);
   checkError(err, "setting reduce2 arg 1", __LINE__);
   err = clSetKernelArg(ocl.reduce2, 2, sizeof(cl_mem), &ocl.av_vels);
   checkError(err, "setting reduce2 arg 2", __LINE__);
+  int nwork_groups = (params.nx * params.ny) / (LOCAL_X * LOCAL_Y);
   err = clSetKernelArg(ocl.reduce2, 3, sizeof(cl_int), &nwork_groups);
   checkError(err, "setting reduce2 arg 3", __LINE__);
 
