@@ -233,6 +233,8 @@ kernel void propagate_collide_2(global t_speed* cells,
 
   int nlx = get_local_size(0);
 
+  //printf("%d, %d, %d, %d, %d\n", ii, jj, li, lj, nlx);
+
   // collision constants
   const float w[NSPEEDS] = { 4.0f / 9.0f, 
                              1.0f / 9.0f, 1.0f / 9.0f, 1.0f / 9.0f, 1.0f / 9.0f, 

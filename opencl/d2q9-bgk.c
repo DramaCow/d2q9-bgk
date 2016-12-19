@@ -207,6 +207,11 @@ int main(int argc, char* argv[])
   float tot_cells = 0.0f;
   for (int ii = 0; ii < params.nx * params.ny; ii++) if (!obstacles[ii]) ++tot_cells;
 
+  // set kernel dimensions
+  size_t globalR[1] = {params.nx};
+  size_t global1D[1] = {params.nx * params.ny}, local1D[1] = {LOCAL_X * LOCAL_Y};
+  size_t global2D[2] = {params.nx , params.ny}, local2D[2] = {LOCAL_X , LOCAL_Y};
+
   /* iterate for maxIters timesteps */
   gettimeofday(&timstr, NULL);
   tic = timstr.tv_sec + (timstr.tv_usec / 1000000.0);
@@ -225,13 +230,22 @@ int main(int argc, char* argv[])
 
   init_kernel_args(params, cells, obstacles, ocl);
 
-  for (int tt = 0; tt < params.maxIters; tt+=2) {
-    accelerate_flow_1(params, cells, obstacles, ocl);
-    propagate_collide_1(params, cells, obstacles, ocl);
-    reduce2(params, tt, ocl);
+  for (int tt = 0; tt < params.maxIters; ++tt) {
+    //accelerate_flow_1(params, cells, obstacles, ocl);
+    err = clEnqueueNDRangeKernel(ocl.queue, ocl.accelerate_flow_1, 1, NULL, globalR, NULL, 0, NULL, NULL);
+    checkError(err, "enqueueing accelerate_flow_1 kernel", __LINE__);
+    //propagate_collide_1(params, cells, obstacles, ocl);
+    err = clEnqueueNDRangeKernel(ocl.queue, ocl.propagate_collide_1, 2, NULL, global2D, local2D, 0, NULL, NULL);
+    checkError(err, "enqueueing propagate_collide_1 kernel", __LINE__);
+    //reduce2(params, tt, ocl);
+    err = clSetKernelArg(ocl.reduce2, 4, sizeof(cl_int), &tt);
+    checkError(err, "setting reduce2 arg 4", __LINE__);
+    err = clEnqueueNDRangeKernel(ocl.queue, ocl.reduce2, 1, NULL, global1D, local1D, 0, NULL, NULL);
+    checkError(err, "enqueueing reduce2 kernel", __LINE__);
+
 /*  
     err = clFinish(ocl.queue);
-    checkError(err, "waiting for all kernels", __LINE__);
+    checkError(err, "=waiting for all kernels", __LINE__);
 
     // Read d_partial_sums from device
     err = clEnqueueReadBuffer(
@@ -245,9 +259,20 @@ int main(int argc, char* argv[])
     }
     av_vels[tt] = tot_u / tot_cells;
 */
-    accelerate_flow_2(params, cells, obstacles, ocl);
-    propagate_collide_2(params, cells, obstacles, ocl);
-    reduce2(params, tt+1, ocl);
+
+    //accelerate_flow_2(params, cells, obstacles, ocl);
+    err = clEnqueueNDRangeKernel(ocl.queue, ocl.accelerate_flow_2, 1, NULL, globalR, NULL, 0, NULL, NULL);
+    checkError(err, "enqueueing accelerate_flow_2 kernel", __LINE__);
+    //propagate_collide_2(params, cells, obstacles, ocl);
+    err = clEnqueueNDRangeKernel(ocl.queue, ocl.propagate_collide_2, 2, NULL, global2D, local2D, 0, NULL, NULL);
+    checkError(err, "enqueueing propagate_collide_2 kernel", __LINE__);
+    //reduce2(params, tt+1, ocl);
+    ++tt;
+    err = clSetKernelArg(ocl.reduce2, 4, sizeof(cl_int), &tt);
+    checkError(err, "setting reduce2 arg 4", __LINE__);
+    err = clEnqueueNDRangeKernel(ocl.queue, ocl.reduce2, 1, NULL, global1D, local1D, 0, NULL, NULL);
+    checkError(err, "enqueueing reduce2 kernel", __LINE__);
+
 /*
     err = clFinish(ocl.queue);
     checkError(err, "waiting for all kernels", __LINE__);
@@ -309,8 +334,8 @@ int accelerate_flow_1(const t_param params, t_speed* cells, int* obstacles, t_oc
   cl_int err;
 
   // Enqueue kernel
-  size_t global[1] = {params.nx};
-  err = clEnqueueNDRangeKernel(ocl.queue, ocl.accelerate_flow_1, 1, NULL, global, NULL, 0, NULL, NULL);
+  size_t global1D[1] = {params.nx};
+  err = clEnqueueNDRangeKernel(ocl.queue, ocl.accelerate_flow_1, 1, NULL, global1D, NULL, 0, NULL, NULL);
   checkError(err, "enqueueing accelerate_flow_1 kernel", __LINE__);
 
   return EXIT_SUCCESS;
@@ -321,8 +346,8 @@ int accelerate_flow_2(const t_param params, t_speed* cells, int* obstacles, t_oc
   cl_int err;
 
   // Enqueue kernel
-  size_t global[1] = {params.nx};
-  err = clEnqueueNDRangeKernel(ocl.queue, ocl.accelerate_flow_2, 1, NULL, global, NULL, 0, NULL, NULL);
+  size_t global1D[1] = {params.nx};
+  err = clEnqueueNDRangeKernel(ocl.queue, ocl.accelerate_flow_2, 1, NULL, global1D, NULL, 0, NULL, NULL);
   checkError(err, "enqueueing accelerate_flow_2 kernel", __LINE__);
 
   return EXIT_SUCCESS;
@@ -333,9 +358,9 @@ int propagate_collide_1(const t_param params, t_speed* cells, int* obstacles, t_
   cl_int err;
 
   // Enqueue kernel
-  size_t global[2] = {params.nx, params.ny};
-  size_t local[2] = {LOCAL_X, LOCAL_Y};
-  err = clEnqueueNDRangeKernel(ocl.queue, ocl.propagate_collide_1, 2, NULL, global, local, 0, NULL, NULL);
+  size_t global2D[2] = {params.nx, params.ny};
+  size_t local2D[2] = {LOCAL_X, LOCAL_Y};
+  err = clEnqueueNDRangeKernel(ocl.queue, ocl.propagate_collide_1, 2, NULL, global2D, local2D, 0, NULL, NULL);
   checkError(err, "enqueueing propagate_collide_1 kernel", __LINE__);
 
   return EXIT_SUCCESS;
@@ -346,10 +371,13 @@ int propagate_collide_2(const t_param params, t_speed* cells, int* obstacles, t_
   cl_int err;
 
   // Enqueue kernel
-  size_t global[2] = {params.nx, params.ny};
-  size_t local[2] = {LOCAL_X, LOCAL_Y};
-  err = clEnqueueNDRangeKernel(ocl.queue, ocl.propagate_collide_2, 2, NULL, global, local, 0, NULL, NULL);
+  size_t global2D[2] = {params.nx, params.ny};
+  size_t local2D[2] = {LOCAL_X, LOCAL_Y};
+  err = clEnqueueNDRangeKernel(ocl.queue, ocl.propagate_collide_2, 2, NULL, global2D, local2D, 0, NULL, NULL);
   checkError(err, "enqueueing propagate_collide_2 kernel", __LINE__);
+
+  err = clFinish(ocl.queue);
+  checkError(err, "waiting for kernel", __LINE__);
 
   return EXIT_SUCCESS;
 }
@@ -363,9 +391,9 @@ int reduce2(const t_param params, int tt, t_ocl ocl)
 
   // Enqueue kernel
   // TODO: this only needs to be 1D
-  size_t global[1] = {params.nx * params.ny};
-  size_t local[1] = {LOCAL_X * LOCAL_Y};
-  err = clEnqueueNDRangeKernel(ocl.queue, ocl.reduce2, 1, NULL, global, local, 0, NULL, NULL);
+  size_t global1D[1] = {params.nx * params.ny};
+  size_t local1D[1] = {LOCAL_X * LOCAL_Y};
+  err = clEnqueueNDRangeKernel(ocl.queue, ocl.reduce2, 1, NULL, global1D, local1D, 0, NULL, NULL);
   checkError(err, "enqueueing reduce2 kernel", __LINE__);
 
   return EXIT_SUCCESS;
