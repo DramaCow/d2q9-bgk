@@ -9,11 +9,6 @@
 
 typedef struct
 {
-  float speeds[NSPEEDS];
-} t_speed;
-
-typedef struct
-{
   float f0[SIZE];
   float f1[SIZE];
   float f2[SIZE];
@@ -23,7 +18,7 @@ typedef struct
   float f6[SIZE];
   float f7[SIZE];
   float f8[SIZE];
-} t_speed_soa;
+} t_speed;
 
 void reduce(local  float*, global float*);
 
@@ -48,18 +43,18 @@ kernel void accelerate_flow_1(global t_speed* cells,
   // if the cell is not occupied and
   // we don't send a negative density
   if (!obstacles[row2 * nx + jj]
-      && (cells[row2 * nx + jj].speeds[3] - w1a) > 0.0f
-      && (cells[row2 * nx + jj].speeds[6] - w2a) > 0.0f
-      && (cells[row2 * nx + jj].speeds[7] - w2a) > 0.0f)
+      && (cells->f3[row2 * nx + jj] - w1a) > 0.0f
+      && (cells->f6[row2 * nx + jj] - w2a) > 0.0f
+      && (cells->f7[row2 * nx + jj] - w2a) > 0.0f)
   {
     // increase 'east-side' densities 
-    cells[row2 * nx + jj].speeds[1] += w1a;
-    cells[row2 * nx + jj].speeds[5] += w2a;
-    cells[row2 * nx + jj].speeds[8] += w2a;
+    cells->f1[row2 * nx + jj] += w1a;
+    cells->f5[row2 * nx + jj] += w2a;
+    cells->f8[row2 * nx + jj] += w2a;
     // decrease 'west-side' densities 
-    cells[row2 * nx + jj].speeds[3] -= w1a;
-    cells[row2 * nx + jj].speeds[6] -= w2a;
-    cells[row2 * nx + jj].speeds[7] -= w2a;
+    cells->f3[row2 * nx + jj] -= w1a;
+    cells->f6[row2 * nx + jj] -= w2a;
+    cells->f7[row2 * nx + jj] -= w2a;
   }
 }
 
@@ -85,18 +80,18 @@ kernel void accelerate_flow_2(global t_speed* cells,
   // if the cell is not occupied and
   // we don't send a negative density
   if (!obstacles[row2 * nx + jj]
-      && (cells[row2 * nx + x_w].speeds[1] - w1a) > 0.0f
-      && (cells[row1 * nx + x_w].speeds[8] - w2a) > 0.0f
-      && (cells[row3 * nx + x_w].speeds[5] - w2a) > 0.0f)
+      && (cells->f1[row2 * nx + x_w] - w1a) > 0.0f
+      && (cells->f8[row1 * nx + x_w] - w2a) > 0.0f
+      && (cells->f5[row3 * nx + x_w] - w2a) > 0.0f)
   {
     // increase 'east-side' densities 
-    cells[row2 * nx + x_e].speeds[3] += w1a;
-    cells[row1 * nx + x_e].speeds[7] += w2a;
-    cells[row3 * nx + x_e].speeds[6] += w2a;
+    cells->f3[row2 * nx + x_e] += w1a;
+    cells->f7[row1 * nx + x_e] += w2a;
+    cells->f6[row3 * nx + x_e] += w2a;
     // decrease 'west-side' densities 
-    cells[row2 * nx + x_w].speeds[1] -= w1a;
-    cells[row1 * nx + x_w].speeds[8] -= w2a;
-    cells[row3 * nx + x_w].speeds[5] -= w2a;
+    cells->f1[row2 * nx + x_w] -= w1a;
+    cells->f8[row1 * nx + x_w] -= w2a;
+    cells->f5[row3 * nx + x_w] -= w2a;
   }
 }
 
@@ -143,15 +138,15 @@ kernel void propagate_collide_1(global t_speed* cells,
     // appropriate directions of travel and writing into
     // scratch space grid
     float tmp_speeds[NSPEEDS];
-    tmp_speeds[0] = cells[ii  * nx + jj ].speeds[0]; // central cell, no movement
-    tmp_speeds[1] = cells[ii  * nx + x_w].speeds[1]; // west 
-    tmp_speeds[2] = cells[y_s * nx + jj ].speeds[2]; // south
-    tmp_speeds[3] = cells[ii  * nx + x_e].speeds[3]; // east
-    tmp_speeds[4] = cells[y_n * nx + jj ].speeds[4]; // north
-    tmp_speeds[5] = cells[y_s * nx + x_w].speeds[5]; // south-west
-    tmp_speeds[6] = cells[y_s * nx + x_e].speeds[6]; // south-east
-    tmp_speeds[7] = cells[y_n * nx + x_e].speeds[7]; // north-east
-    tmp_speeds[8] = cells[y_n * nx + x_w].speeds[8]; // north-west 
+    tmp_speeds[0] = cells->f0[ii  * nx + jj ]; // central cell, no movement
+    tmp_speeds[1] = cells->f1[ii  * nx + x_w]; // west 
+    tmp_speeds[2] = cells->f2[y_s * nx + jj ]; // south
+    tmp_speeds[3] = cells->f3[ii  * nx + x_e]; // east
+    tmp_speeds[4] = cells->f4[y_n * nx + jj ]; // north
+    tmp_speeds[5] = cells->f5[y_s * nx + x_w]; // south-west
+    tmp_speeds[6] = cells->f6[y_s * nx + x_e]; // south-east
+    tmp_speeds[7] = cells->f7[y_n * nx + x_e]; // north-east
+    tmp_speeds[8] = cells->f8[y_n * nx + x_w]; // north-west 
 
     // === COLLISION === don't consider occupied cells
     // compute local density total
@@ -198,15 +193,15 @@ kernel void propagate_collide_1(global t_speed* cells,
       tmp_speeds[kk] *= (1.0f - omega);
       tmp_speeds[kk] += omega_d_equ[kk];
     }
-    cells[ii  * nx + jj ].speeds[0] = tmp_speeds[0]; // central cell, no movement
-    cells[ii  * nx + x_w].speeds[1] = tmp_speeds[3]; // west
-    cells[y_s * nx + jj ].speeds[2] = tmp_speeds[4]; // south
-    cells[ii  * nx + x_e].speeds[3] = tmp_speeds[1]; // east
-    cells[y_n * nx + jj ].speeds[4] = tmp_speeds[2]; // north
-    cells[y_s * nx + x_w].speeds[5] = tmp_speeds[7]; // south-west
-    cells[y_s * nx + x_e].speeds[6] = tmp_speeds[8]; // south-east
-    cells[y_n * nx + x_e].speeds[7] = tmp_speeds[5]; // north-east
-    cells[y_n * nx + x_w].speeds[8] = tmp_speeds[6]; // north-west
+    cells->f0[ii  * nx + jj ] = tmp_speeds[0]; // central cell, no movement
+    cells->f1[ii  * nx + x_w] = tmp_speeds[3]; // west
+    cells->f2[y_s * nx + jj ] = tmp_speeds[4]; // south
+    cells->f3[ii  * nx + x_e] = tmp_speeds[1]; // east
+    cells->f4[y_n * nx + jj ] = tmp_speeds[2]; // north
+    cells->f5[y_s * nx + x_w] = tmp_speeds[7]; // south-west
+    cells->f6[y_s * nx + x_e] = tmp_speeds[8]; // south-east
+    cells->f7[y_n * nx + x_e] = tmp_speeds[5]; // north-east
+    cells->f8[y_n * nx + x_w] = tmp_speeds[6]; // north-west
 
     // accumulate the norm of x- and y- velocity components
     tot_u = sqrt(u_x * u_x + u_y * u_y);
@@ -253,15 +248,15 @@ kernel void propagate_collide_2(global t_speed* cells,
     // this iteration only uses local speeds (no need to look at neighbours)
     // [[note: there speeds are "facing" inwards]]
     float tmp_speeds[NSPEEDS];
-    tmp_speeds[0] = cells[ii * nx + jj].speeds[0];
-    tmp_speeds[1] = cells[ii * nx + jj].speeds[3];
-    tmp_speeds[2] = cells[ii * nx + jj].speeds[4];
-    tmp_speeds[3] = cells[ii * nx + jj].speeds[1];
-    tmp_speeds[4] = cells[ii * nx + jj].speeds[2];
-    tmp_speeds[5] = cells[ii * nx + jj].speeds[7];
-    tmp_speeds[6] = cells[ii * nx + jj].speeds[8];
-    tmp_speeds[7] = cells[ii * nx + jj].speeds[5];
-    tmp_speeds[8] = cells[ii * nx + jj].speeds[6];
+    tmp_speeds[0] = cells->f0[ii * nx + jj];
+    tmp_speeds[1] = cells->f3[ii * nx + jj];
+    tmp_speeds[2] = cells->f4[ii * nx + jj];
+    tmp_speeds[3] = cells->f1[ii * nx + jj];
+    tmp_speeds[4] = cells->f2[ii * nx + jj];
+    tmp_speeds[5] = cells->f7[ii * nx + jj];
+    tmp_speeds[6] = cells->f8[ii * nx + jj];
+    tmp_speeds[7] = cells->f5[ii * nx + jj];
+    tmp_speeds[8] = cells->f6[ii * nx + jj];
 
     // === COLLISION === don't consider occupied cells
     // compute local density total
@@ -304,15 +299,15 @@ kernel void propagate_collide_2(global t_speed* cells,
 
     // relaxation step
     // store cells speeds in current cell only
-    cells[ii * nx + jj].speeds[0] = tmp_speeds[0] - omega*(tmp_speeds[0] - d_equ[0]);
-    cells[ii * nx + jj].speeds[1] = tmp_speeds[1] - omega*(tmp_speeds[1] - d_equ[1]);
-    cells[ii * nx + jj].speeds[2] = tmp_speeds[2] - omega*(tmp_speeds[2] - d_equ[2]);
-    cells[ii * nx + jj].speeds[3] = tmp_speeds[3] - omega*(tmp_speeds[3] - d_equ[3]);
-    cells[ii * nx + jj].speeds[4] = tmp_speeds[4] - omega*(tmp_speeds[4] - d_equ[4]);
-    cells[ii * nx + jj].speeds[5] = tmp_speeds[5] - omega*(tmp_speeds[5] - d_equ[5]);
-    cells[ii * nx + jj].speeds[6] = tmp_speeds[6] - omega*(tmp_speeds[6] - d_equ[6]);
-    cells[ii * nx + jj].speeds[7] = tmp_speeds[7] - omega*(tmp_speeds[7] - d_equ[7]);
-    cells[ii * nx + jj].speeds[8] = tmp_speeds[8] - omega*(tmp_speeds[8] - d_equ[8]);
+    cells->f0[ii * nx + jj] = tmp_speeds[0] - omega*(tmp_speeds[0] - d_equ[0]);
+    cells->f1[ii * nx + jj] = tmp_speeds[1] - omega*(tmp_speeds[1] - d_equ[1]);
+    cells->f2[ii * nx + jj] = tmp_speeds[2] - omega*(tmp_speeds[2] - d_equ[2]);
+    cells->f3[ii * nx + jj] = tmp_speeds[3] - omega*(tmp_speeds[3] - d_equ[3]);
+    cells->f4[ii * nx + jj] = tmp_speeds[4] - omega*(tmp_speeds[4] - d_equ[4]);
+    cells->f5[ii * nx + jj] = tmp_speeds[5] - omega*(tmp_speeds[5] - d_equ[5]);
+    cells->f6[ii * nx + jj] = tmp_speeds[6] - omega*(tmp_speeds[6] - d_equ[6]);
+    cells->f7[ii * nx + jj] = tmp_speeds[7] - omega*(tmp_speeds[7] - d_equ[7]);
+    cells->f8[ii * nx + jj] = tmp_speeds[8] - omega*(tmp_speeds[8] - d_equ[8]);
 
     // accumulate the norm of x- and y- velocity components
     tot_u += sqrt(u_x * u_x + u_y * u_y);
