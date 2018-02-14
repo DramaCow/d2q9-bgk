@@ -1,6 +1,4 @@
-# HPC Coursework
-
-Base coursework for HPC 2016 class
+# D2Q9-BGK Lattice Boltzmann
 
 * Source code is in the d2q9-bgk.c
 * Results checking scripts are in the check/ folder
